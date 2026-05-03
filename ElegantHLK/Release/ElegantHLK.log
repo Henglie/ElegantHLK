@@ -1,6 +1,7 @@
 ﻿  ElegantHLK.cpp
   正在生成代码
-  Previous IPDB not found, fall back to full compilation.
-  All 508 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  0 of 1280 functions ( 0.0%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    0 functions had inline decision re-evaluated but remain unchanged
   已完成代码的生成
-  ElegantHLK.vcxproj -> C:\Users\Operater\Desktop\ElegantHLK\Release\ElegantHLK.exe
+  ElegantHLK.vcxproj -> C:\Users\Operater\Documents\我的项目源码\ElegantHLK\Release\ElegantHLK.exe
