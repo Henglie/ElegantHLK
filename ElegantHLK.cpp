@@ -11,6 +11,7 @@
 #include <commctrl.h>
 #include <shellapi.h>
 #include <shlwapi.h>
+#include <commdlg.h>
 #include <wincrypt.h> 
 #include <stdio.h>
 #include <process.h>
@@ -40,6 +41,7 @@
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "comdlg32.lib")
 
 #pragma comment(linker, "/subsystem:windows")
 
@@ -66,6 +68,7 @@
 #define ID_BTN_INVSEL_L      1018
 #define ID_BTN_SELALL_R      1019
 #define ID_BTN_INVSEL_R      1020
+#define ID_BTN_EXPORT_R      1021
 
 #define IDM_COPY_FILENAME    2001
 #define IDM_COPY_PATH        2002
@@ -79,12 +82,23 @@
 #define WM_USER_ANALYZE_DONE    (WM_USER + 101)
 #define WM_USER_CREATE_DONE     (WM_USER + 102)
 #define WM_USER_UPDATE_PROGRESS (WM_USER + 103)
+#define WM_USER_UPDATE_SCANFILE (WM_USER + 104)
 
 HINSTANCE g_hInst;
 HWND g_hMainWnd, g_hComboDisk, g_hEditAddress, g_hComboFilter, g_hFileList, g_hHardlinkList;
 HWND g_hBtnRefresh, g_hBtnAnalyze, g_hBtnCreate, g_hBtnRestore, g_hBtnHotkey, g_hBtnAbout;
 HWND g_hTxtTotalSaved, g_hProgressBar, g_hGroupFilter;
 HWND g_hBtnSelAllL, g_hBtnInvSelL, g_hBtnSelAllR, g_hBtnInvSelR;
+HWND g_hBtnExportR, g_hTxtScanInfo;
+char g_szScanFile[2048] = "";
+volatile int g_nScanCounter = 0;
+
+// V1.1 统计与拖拽
+size_t g_StatGroupCount = 0;   // 重复组数
+size_t g_StatDupFileCount = 0; // 重复文件总数
+DWORD  g_StatElapsedMs = 0;    // 分析耗时(毫秒)
+std::map<std::string, int> g_GroupParity; // SHA256 -> 0/1 交替底色
+CRITICAL_SECTION g_csParity;               // 保护 g_GroupParity 跨线程访问
 
 // 静态文本和输入框 HWND
 HWND g_hTxtDisk, g_hTxtAddr, g_hTxtFilter;
@@ -137,6 +151,7 @@ unsigned __stdcall CreateHardlinksThread(void* pArguments);
 void AddListItem(HWND hList, const char* col0, const char* col1, const char* col2, const char* col3, const char* col4, DWORD dwAttributes, const char* overridePath = NULL);
 void CopyToClipboard(HWND hwnd, const char* text);
 void GenerateAHKScript(HWND hwnd);
+void ExportHardlinkList(HWND hwnd);
 int CALLBACK CompareFuncEx(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort);
 BOOL BreakHardlink(const char* filepath);
 void GetSafeFullPath(const char* dir, const char* file, char* outPath, size_t maxLen);
@@ -227,6 +242,7 @@ int main() { return WinMain(GetModuleHandleA(NULL), NULL, GetCommandLineA(), SW_
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     g_hInst = hInstance;
+    InitializeCriticalSection(&g_csParity);
     EnableDPIAwareness();
     HDC hdc = GetDC(NULL); g_DPI = GetDeviceCaps(hdc, LOGPIXELSX); ReleaseDC(NULL, hdc);
 
@@ -241,11 +257,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW); wc.lpszClassName = "ElegantHardlinkClass";
     RegisterClassExA(&wc);
 
-    g_hMainWnd = CreateWindowExA(0, "ElegantHardlinkClass", "优雅硬链接 V1.0",
+    g_hMainWnd = CreateWindowExA(0, "ElegantHardlinkClass", "优雅硬链接 V1.1",
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, DPIScale(1000), DPIScale(680), NULL, NULL, hInstance, NULL);
 
     if (!g_hMainWnd) return 0;
+    DragAcceptFiles(g_hMainWnd, TRUE);
     ShowWindow(g_hMainWnd, nCmdShow); UpdateWindow(g_hMainWnd);
 
     MSG msg;
@@ -366,6 +383,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         MoveWindow(g_hBtnInvSelL, DPIScale(80), DPIScale(110), DPIScale(60), DPIScale(25), TRUE);
         MoveWindow(g_hBtnSelAllR, DPIScale(20) + listW, DPIScale(110), DPIScale(60), DPIScale(25), TRUE);
         MoveWindow(g_hBtnInvSelR, DPIScale(90) + listW, DPIScale(110), DPIScale(60), DPIScale(25), TRUE);
+        MoveWindow(g_hBtnExportR, DPIScale(160) + listW, DPIScale(110), DPIScale(90), DPIScale(25), TRUE);
 
         MoveWindow(g_hFileList, DPIScale(10), listY, listW, listHeight, TRUE);
         MoveWindow(g_hHardlinkList, DPIScale(20) + listW, listY, listW, listHeight, TRUE);
@@ -378,9 +396,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         MoveWindow(g_hBtnRestore, DPIScale(430), btnY, DPIScale(130), DPIScale(35), TRUE);
 
         int btnY2 = cy - DPIScale(40);
+        int progW = DPIScale(180);
+        int progX = cx - DPIScale(120) - progW - DPIScale(10);
+        int scanX = DPIScale(180);
+        int scanW = progX - scanX - DPIScale(10);
+        if (scanW < DPIScale(80)) scanW = DPIScale(80);
         MoveWindow(g_hBtnHotkey, DPIScale(10), btnY2, DPIScale(160), DPIScale(35), TRUE);
-        MoveWindow(g_hProgressBar, DPIScale(180), btnY2 + DPIScale(8), DPIScale(200), DPIScale(20), TRUE);
-        MoveWindow(g_hTxtTotalSaved, DPIScale(390), btnY2 + DPIScale(8), cx - DPIScale(510), DPIScale(20), TRUE);
+        MoveWindow(g_hTxtScanInfo, scanX, btnY2 + DPIScale(2), scanW, DPIScale(18), TRUE);
+        MoveWindow(g_hProgressBar, progX, btnY2 + DPIScale(2), progW, DPIScale(16), TRUE);
+        MoveWindow(g_hTxtTotalSaved, scanX, btnY2 + DPIScale(20), progX + progW - scanX, DPIScale(18), TRUE);
         MoveWindow(g_hBtnAbout, cx - DPIScale(110), btnY2, DPIScale(100), DPIScale(35), TRUE);
         break;
     }
@@ -388,6 +412,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     case WM_USER_UPDATE_PROGRESS:
         SendMessage(g_hProgressBar, PBM_SETRANGE32, 0, lParam);
         SendMessage(g_hProgressBar, PBM_SETPOS, wParam, 0);
+        break;
+
+    case WM_USER_UPDATE_SCANFILE:
+        SetWindowTextA(g_hTxtScanInfo, g_szScanFile);
         break;
 
     case WM_NOTIFY: {
@@ -446,6 +474,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 else if (bHidden) lplvcd->clrText = RGB(255, 0, 0);
                 else if (bReadOnly) lplvcd->clrText = RGB(0, 0, 255);
                 else lplvcd->clrText = RGB(0, 0, 0);
+
+                // 右侧重复列表：同一 SHA256 组用交替底色，方便区分"哪几行是一伙的"
+                if (lpnmh->idFrom == ID_LIST_HARDLINK) {
+                    char sha[128] = { 0 };
+                    GetListViewSubItemTextA(g_hHardlinkList, (int)lplvcd->nmcd.dwItemSpec, 3, sha, sizeof(sha));
+                    int parity = 0;
+                    EnterCriticalSection(&g_csParity);
+                    std::map<std::string, int>::iterator git = g_GroupParity.find(sha);
+                    if (git != g_GroupParity.end()) parity = git->second;
+                    LeaveCriticalSection(&g_csParity);
+                    lplvcd->clrTextBk = parity ? RGB(226, 239, 252) : RGB(255, 255, 255);
+                }
                 return CDRF_NEWFONT;
             }
         }
@@ -592,6 +632,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 break;
             }
 
+            case ID_BTN_EXPORT_R: ExportHardlinkList(hwnd); break;
             case ID_BTN_SET_HOTKEY: GenerateAHKScript(hwnd); break;
             case ID_BTN_ABOUT:
                 MessageBoxA(hwnd, "作者：恒烈 EternalBlaze\ngithub项目地址：https://github.com/Henglie/ElegantHLK\n开源协议：MIT", "关于作者", MB_OK | MB_ICONINFORMATION);
@@ -652,18 +693,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         g_bScanning = FALSE; g_bCancelAnalysis = FALSE;
         SendMessage(g_hProgressBar, PBM_SETRANGE32, 0, 100);
         SendMessage(g_hProgressBar, PBM_SETPOS, 100, 0);
+        SetWindowTextA(g_hTxtScanInfo, "");
         SetWindowTextA(g_hBtnRefresh, "刷新当前目录");
         SetWindowTextA(g_hBtnAnalyze, "分析文件(查重)");
         SetWindowTextA(g_hBtnCreate, "一键创建硬链接");
 
         char totalBuf[128]; FormatSize(g_llTotalSavedSpace, totalBuf, sizeof(totalBuf));
-        char finalStr[256]; snprintf(finalStr, sizeof(finalStr), "硬链接后总计可省空间: %s", totalBuf);
+        double dElapsed = g_StatElapsedMs / 1000.0;
+        char finalStr[320];
+        snprintf(finalStr, sizeof(finalStr), "可省空间: %s  |  重复组: %zu  |  重复文件: %zu  |  耗时: %.2fs",
+                 totalBuf, g_StatGroupCount, g_StatDupFileCount, dElapsed);
         SetWindowTextA(g_hTxtTotalSaved, finalStr);
 
         BOOL bCancelled = (BOOL)lParam; size_t count = (size_t)wParam;
         if (bCancelled) MessageBoxA(hwnd, "分析已被用户终止！", "提示", MB_OK | MB_ICONINFORMATION);
         else {
-            char msg[256]; snprintf(msg, sizeof(msg), "分析成功！\n\n共发现可以创建的硬链接数：%zu 个\n预计可释放空间：%s", count, totalBuf);
+            char msg[512];
+            snprintf(msg, sizeof(msg),
+                "分析成功！\n\n重复文件组数：%zu 组\n重复文件总数：%zu 个\n可创建的硬链接数：%zu 个\n预计可释放空间：%s\n本次分析耗时：%.2f 秒",
+                g_StatGroupCount, g_StatDupFileCount, count, totalBuf, dElapsed);
             MessageBoxA(hwnd, msg, "查重分析完成", MB_OK | MB_ICONINFORMATION);
         }
         break;
@@ -693,6 +741,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             ShowFileContextMenu(hwnd, pt, (HWND)wParam == g_hHardlinkList);
         }
         break;
+    case WM_DROPFILES: {
+        HDROP hDrop = (HDROP)wParam;
+        char dropped[2048] = { 0 };
+        if (DragQueryFileA(hDrop, 0, dropped, sizeof(dropped)) > 0) {
+            DWORD da = GetFileAttributesA(dropped);
+            if (da != INVALID_FILE_ATTRIBUTES) {
+                if (da & FILE_ATTRIBUTE_DIRECTORY) {
+                    lstrcpynA(g_CurrentPath, dropped, sizeof(g_CurrentPath));
+                } else {
+                    lstrcpynA(g_CurrentPath, dropped, sizeof(g_CurrentPath));
+                    PathRemoveFileSpecA(g_CurrentPath);
+                }
+                SetWindowTextA(g_hEditAddress, g_CurrentPath);
+                SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_BTN_REFRESH, BN_CLICKED), 0);
+            }
+        }
+        DragFinish(hDrop);
+        break;
+    }
     case WM_DESTROY: PostQuitMessage(0); break;
     default: return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
@@ -761,6 +828,10 @@ void CollectFilesRecursively(const std::string& folder, std::vector<FileNode>& f
             if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) continue;
             char fullPath[2048]; GetSafeFullPath(folder.c_str(), fd.cFileName, fullPath, 2048);
 
+            if ((++g_nScanCounter & 0x3F) == 0) {
+                snprintf(g_szScanFile, sizeof(g_szScanFile), "正在扫描: %s", fullPath);
+                PostMessage(g_hMainWnd, WM_USER_UPDATE_SCANFILE, 0, 0);
+            }
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
                 CollectFilesRecursively(fullPath, fileList);
             }
@@ -779,7 +850,18 @@ void CollectFilesRecursively(const std::string& folder, std::vector<FileNode>& f
 
 unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
     g_llTotalSavedSpace = 0;
+    g_nScanCounter = 0;
     std::vector<FileNode> allFiles;
+
+    g_StatGroupCount = 0;
+    g_StatDupFileCount = 0;
+    EnterCriticalSection(&g_csParity);
+    g_GroupParity.clear();
+    LeaveCriticalSection(&g_csParity);
+    DWORD dwAnalyzeStart = GetTickCount();
+
+    snprintf(g_szScanFile, sizeof(g_szScanFile), "正在递归收集文件列表...");
+    PostMessage(g_hMainWnd, WM_USER_UPDATE_SCANFILE, 0, 0);
 
     for (size_t i = 0; i < g_TargetDirs.size(); ++i) {
         CollectFilesRecursively(g_TargetDirs[i], allFiles);
@@ -807,6 +889,8 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
                 std::map<std::string, std::vector<FileNode>> hashMap;
                 for (size_t i = 0; i < it->second.size(); ++i) {
                     if (g_bCancelAnalysis) break;
+                    snprintf(g_szScanFile, sizeof(g_szScanFile), "正在校验: %s", it->second[i].fullPath.c_str());
+                    PostMessage(g_hMainWnd, WM_USER_UPDATE_SCANFILE, 0, 0);
                     std::string hashVal;
                     if (CalculateFileSHA256(it->second[i].fullPath.c_str(), hashVal)) {
                         hashMap[hashVal].push_back(it->second[i]);
@@ -843,6 +927,13 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
                             g_llTotalSavedSpace += savedSpace;
                         }
 
+                        // 统计：本组算 1 个重复组，组内文件计入重复文件数；分配交替底色
+                        EnterCriticalSection(&g_csParity);
+                        g_GroupParity[hit->first] = (int)(g_StatGroupCount & 1);
+                        LeaveCriticalSection(&g_csParity);
+                        g_StatGroupCount++;
+                        g_StatDupFileCount += hit->second.size();
+
                         char szSaved[64]; FormatSize(savedSpace, szSaved, sizeof(szSaved));
 
                         for (size_t k = 0; k < hit->second.size(); ++k) {
@@ -866,6 +957,8 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
             }
         }
     }
+
+    g_StatElapsedMs = GetTickCount() - dwAnalyzeStart;
 
     g_CurrentSortList = g_hHardlinkList;
     g_CurrentSortColumn = g_SortColRight;
@@ -950,6 +1043,59 @@ void CopyToClipboard(HWND hwnd, const char* text) {
         EmptyClipboard(); HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, strlen(text) + 1);
         if (hg) { memcpy(GlobalLock(hg), text, strlen(text) + 1); GlobalUnlock(hg); SetClipboardData(CF_TEXT, hg); }
         CloseClipboard();
+    }
+}
+
+void ExportHardlinkList(HWND hwnd) {
+    int count = (int)SendMessageA(g_hHardlinkList, LVM_GETITEMCOUNT, 0, 0);
+    if (count == 0) {
+        MessageBoxA(hwnd, "右侧列表为空，请先进行【分析文件(查重)】再导出。", "提示", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    int checkedCount = 0;
+    for (int i = 0; i < count; i++) {
+        if (ListView_GetCheckState(g_hHardlinkList, i)) checkedCount++;
+    }
+
+    char fileName[2048] = "重复文件列表.csv";
+    OPENFILENAMEA ofn = { 0 };
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFilter = "CSV 文件 (*.csv)\0*.csv\0文本文件 (*.txt)\0*.txt\0所有的类型\0*.*\0";
+    ofn.lpstrFile = fileName;
+    ofn.nMaxFile = sizeof(fileName);
+    ofn.lpstrDefExt = "csv";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    if (!GetSaveFileNameA(&ofn)) return;
+
+    FILE* fp = fopen(fileName, "wb");
+    if (!fp) {
+        MessageBoxA(hwnd, "无法写入文件，请检查文件是否被占用或权限不足。", "错误", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    fprintf(fp, "路径,状态,大小/可省,SHA256,已硬链接\r\n");
+
+    size_t exported = 0;
+    for (int i = 0; i < count; i++) {
+        if (checkedCount > 0 && !ListView_GetCheckState(g_hHardlinkList, i)) continue;
+        char path[2048] = { 0 }, status[256] = { 0 }, sizeStr[128] = { 0 }, sha[128] = { 0 }, hl[16] = { 0 };
+        GetListViewSubItemTextA(g_hHardlinkList, i, 0, path, 2048);
+        GetListViewSubItemTextA(g_hHardlinkList, i, 1, status, 256);
+        GetListViewSubItemTextA(g_hHardlinkList, i, 2, sizeStr, 128);
+        GetListViewSubItemTextA(g_hHardlinkList, i, 3, sha, 128);
+        GetListViewSubItemTextA(g_hHardlinkList, i, 4, hl, 16);
+        fprintf(fp, "\"%s\",\"%s\",\"%s\",%s,%s\r\n", path, status, sizeStr, sha, (hl[0] == '1' ? "是" : "否"));
+        exported++;
+    }
+    fclose(fp);
+
+    char msg[2560];
+    snprintf(msg, sizeof(msg), "已导出 %zu 条记录到：\n%s\n\n是否在打开文件所在位置？\n(该CSV可被 Excel 直接打开)", exported, fileName);
+    if (MessageBoxA(hwnd, msg, "导出成功", MB_OKCANCEL | MB_ICONINFORMATION) == IDOK) {
+        char param[2048 + 20]; snprintf(param, sizeof(param), "/select,\"%s\"", fileName);
+        ShellExecuteA(NULL, "open", "explorer.exe", param, NULL, SW_SHOWNORMAL);
     }
 }
 
@@ -1045,6 +1191,7 @@ void CreateControls(HWND hwnd) {
     g_hBtnInvSelL = CreateWindowExA(0, "BUTTON", "反选", WS_VISIBLE | WS_CHILD, DPIScale(80), DPIScale(110), DPIScale(60), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_INVSEL_L, g_hInst, NULL);
     g_hBtnSelAllR = CreateWindowExA(0, "BUTTON", "全选", WS_VISIBLE | WS_CHILD, DPIScale(440), DPIScale(110), DPIScale(60), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_SELALL_R, g_hInst, NULL);
     g_hBtnInvSelR = CreateWindowExA(0, "BUTTON", "反选", WS_VISIBLE | WS_CHILD, DPIScale(510), DPIScale(110), DPIScale(60), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_INVSEL_R, g_hInst, NULL);
+    g_hBtnExportR = CreateWindowExA(0, "BUTTON", "导出列表", WS_VISIBLE | WS_CHILD, DPIScale(580), DPIScale(110), DPIScale(90), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_EXPORT_R, g_hInst, NULL);
 
     g_hFileList = CreateWindowExA(WS_EX_CLIENTEDGE, WC_LISTVIEWA, "", WS_VISIBLE | WS_CHILD | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SINGLESEL, DPIScale(10), DPIScale(140), DPIScale(420), DPIScale(420), hwnd, (HMENU)(INT_PTR)ID_LIST_FILE, g_hInst, NULL);
     LVCOLUMNA lvc = { 0 }; lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
@@ -1075,7 +1222,8 @@ void CreateControls(HWND hwnd) {
     int btnY2 = 625;
     g_hBtnHotkey = CreateWindowExA(0, "BUTTON", "生成快捷键脚本", WS_VISIBLE | WS_CHILD, DPIScale(10), DPIScale(btnY2), DPIScale(160), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_SET_HOTKEY, g_hInst, NULL);
 
-    g_hProgressBar = CreateWindowExA(0, PROGRESS_CLASSA, NULL, WS_VISIBLE | WS_CHILD | PBS_SMOOTH, DPIScale(180), DPIScale(btnY2 + 8), DPIScale(200), DPIScale(20), hwnd, (HMENU)(INT_PTR)ID_PROGRESS_BAR, g_hInst, NULL);
+    g_hTxtScanInfo = CreateWindowExA(0, "STATIC", "", WS_VISIBLE | WS_CHILD | SS_LEFT | SS_PATHELLIPSIS | SS_NOPREFIX, DPIScale(180), DPIScale(btnY2 + 2), DPIScale(300), DPIScale(18), hwnd, NULL, g_hInst, NULL);
+    g_hProgressBar = CreateWindowExA(0, PROGRESS_CLASSA, NULL, WS_VISIBLE | WS_CHILD | PBS_SMOOTH, DPIScale(500), DPIScale(btnY2 + 2), DPIScale(180), DPIScale(16), hwnd, (HMENU)(INT_PTR)ID_PROGRESS_BAR, g_hInst, NULL);
 
     g_hTxtTotalSaved = CreateWindowExA(0, "STATIC", "硬链接后总计可省空间: 0.00 KB", WS_VISIBLE | WS_CHILD | SS_RIGHT, DPIScale(390), DPIScale(btnY2 + 8), DPIScale(460), DPIScale(20), hwnd, NULL, g_hInst, NULL);
     g_hBtnAbout = CreateWindowExA(0, "BUTTON", "关于作者", WS_VISIBLE | WS_CHILD, DPIScale(870), DPIScale(btnY2), DPIScale(100), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_ABOUT, g_hInst, NULL);
@@ -1087,6 +1235,7 @@ void CreateControls(HWND hwnd) {
     SetDefaultFont(g_hTxtTotalSaved); SetDefaultFont(g_hComboDisk); SetDefaultFont(g_hEditAddress); SetDefaultFont(g_hComboFilter);
     SetDefaultFont(g_hFileList); SetDefaultFont(g_hHardlinkList);
     SetDefaultFont(g_hBtnSelAllL); SetDefaultFont(g_hBtnInvSelL); SetDefaultFont(g_hBtnSelAllR); SetDefaultFont(g_hBtnInvSelR);
+    SetDefaultFont(g_hBtnExportR); SetDefaultFont(g_hTxtScanInfo);
     SetDefaultFont(g_hBtnRefresh); SetDefaultFont(g_hBtnAnalyze); SetDefaultFont(g_hBtnCreate); SetDefaultFont(g_hBtnRestore);
     SetDefaultFont(g_hBtnHotkey); SetDefaultFont(g_hBtnAbout);
 }

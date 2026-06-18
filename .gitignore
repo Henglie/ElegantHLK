@@ -1,0 +1,22 @@
+# 快照备份（本地留档，不推送）
+快照备份/
+
+# 发布产物（通过 GitHub Releases 分发，不进源码树）
+ElegantHLK_x64.exe
+ElegantHLK_x86.exe
+
+# VS 编译中间产物
+*.obj
+*.res
+*.iobj
+*.ipdb
+*.pdb
+*.tlog
+*.log
+*.recipe
+*.aps
+[Dd]ebug/
+[Rr]elease/
+x64/
+ipch/
+.vs/
