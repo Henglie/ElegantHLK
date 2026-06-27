@@ -54,7 +54,6 @@
 #define ID_BTN_ANALYZE       1007
 #define ID_BTN_CREATE_HLINK  1008
 #define ID_BTN_RESTORE_SLINK 1009
-#define ID_BTN_SET_HOTKEY    1010
 #define ID_BTN_ABOUT         1011
 
 // 高级过滤与新控件 ID
@@ -86,7 +85,7 @@
 
 HINSTANCE g_hInst;
 HWND g_hMainWnd, g_hComboDisk, g_hEditAddress, g_hComboFilter, g_hFileList, g_hHardlinkList;
-HWND g_hBtnRefresh, g_hBtnAnalyze, g_hBtnCreate, g_hBtnRestore, g_hBtnHotkey, g_hBtnAbout;
+HWND g_hBtnRefresh, g_hBtnAnalyze, g_hBtnCreate, g_hBtnRestore, g_hBtnAbout;
 HWND g_hTxtTotalSaved, g_hProgressBar, g_hGroupFilter;
 HWND g_hBtnSelAllL, g_hBtnInvSelL, g_hBtnSelAllR, g_hBtnInvSelR;
 HWND g_hBtnExportR, g_hTxtScanInfo;
@@ -150,7 +149,6 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments);
 unsigned __stdcall CreateHardlinksThread(void* pArguments);
 void AddListItem(HWND hList, const char* col0, const char* col1, const char* col2, const char* col3, const char* col4, DWORD dwAttributes, const char* overridePath = NULL);
 void CopyToClipboard(HWND hwnd, const char* text);
-void GenerateAHKScript(HWND hwnd);
 void ExportHardlinkList(HWND hwnd);
 int CALLBACK CompareFuncEx(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort);
 BOOL BreakHardlink(const char* filepath);
@@ -258,7 +256,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW); wc.lpszClassName = "ElegantHardlinkClass";
     RegisterClassExA(&wc);
 
-    g_hMainWnd = CreateWindowExA(0, "ElegantHardlinkClass", "优雅硬链接 V1.1",
+    g_hMainWnd = CreateWindowExA(0, "ElegantHardlinkClass", "优雅硬链接 V1.1.1",
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, DPIScale(1000), DPIScale(680), NULL, NULL, hInstance, NULL);
 
@@ -399,10 +397,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         int btnY2 = cy - DPIScale(40);
         int progW = DPIScale(180);
         int progX = cx - DPIScale(120) - progW - DPIScale(10);
-        int scanX = DPIScale(180);
+        int scanX = DPIScale(10);
         int scanW = progX - scanX - DPIScale(10);
         if (scanW < DPIScale(80)) scanW = DPIScale(80);
-        MoveWindow(g_hBtnHotkey, DPIScale(10), btnY2, DPIScale(160), DPIScale(35), TRUE);
         MoveWindow(g_hTxtScanInfo, scanX, btnY2 + DPIScale(2), scanW, DPIScale(18), TRUE);
         MoveWindow(g_hProgressBar, progX, btnY2 + DPIScale(2), progW, DPIScale(16), TRUE);
         MoveWindow(g_hTxtTotalSaved, scanX, btnY2 + DPIScale(20), progX + progW - scanX, DPIScale(18), TRUE);
@@ -652,7 +649,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_BTN_REFRESH, BN_CLICKED), 0);
                 break;
             }
-            case ID_BTN_SET_HOTKEY: GenerateAHKScript(hwnd); break;
             case ID_BTN_ABOUT:
                 MessageBoxA(hwnd, "作者：恒烈 EternalBlaze\ngithub项目地址：https://github.com/Henglie/ElegantHLK\n开源协议：MIT", "关于作者", MB_OK | MB_ICONINFORMATION);
                 break;
@@ -706,7 +702,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             case IDM_CREATE_HLINK_CTX: {
                 DWORD attr = (DWORD)GetListViewParamA(hActiveList, selIdx);
                 if (attr & FILE_ATTRIBUTE_DIRECTORY) MessageBoxA(hwnd, "硬链接不能作用于文件夹！", "错误", MB_OK | MB_ICONERROR);
-                else MessageBoxA(hwnd, "请使用左侧列表上方的『一键创建硬链接』或者快捷键脚本执行。", "提示", MB_OK);
+                else MessageBoxA(hwnd, "请使用列表上方的『一键创建硬链接』按钮执行。", "提示", MB_OK);
                 break;
             }
             }
@@ -1138,14 +1134,6 @@ void ExportHardlinkList(HWND hwnd) {
     }
 }
 
-void GenerateAHKScript(HWND hwnd) {
-    FILE* fp = fopen("ElegantHardlink_Hotkey.ahk", "w");
-    if (fp) {
-        fprintf(fp, "; 优雅硬链接 - 自动化热键脚本\n^h::\n    Send, ^c\n    Sleep, 150\n    Loop, Parse, Clipboard, `n, `r\n    {\n        if (A_LoopField = \"\")\n            continue\n        SplitPath, A_LoopField, outName\n        RunWait, cmd.exe /c mklink /H \"%%A_WorkingDir%%\\%%outName%%\" \"%%A_LoopField%%\", , Hide\n    }\n    MsgBox, 64, 硬链接工具, 外部硬链接创建指令已下发！\nreturn\n");
-        fclose(fp); MessageBoxA(hwnd, "脚本 ElegantHardlink_Hotkey.ahk 已生成！", "成功", MB_OK);
-    }
-}
-
 void AddListItem(HWND hList, const char* col0, const char* col1, const char* col2, const char* col3, const char* col4, DWORD dwAttributes, const char* overridePath) {
     SHFILEINFOA sfi = { 0 }; char targetPath[2048];
     if (overridePath) lstrcpyA(targetPath, overridePath);
@@ -1259,8 +1247,6 @@ void CreateControls(HWND hwnd) {
     g_hBtnRestore = CreateWindowExA(0, "BUTTON", "解绑硬链接", WS_VISIBLE | WS_CHILD, DPIScale(430), DPIScale(btnY), DPIScale(130), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_RESTORE_SLINK, g_hInst, NULL);
 
     int btnY2 = 625;
-    g_hBtnHotkey = CreateWindowExA(0, "BUTTON", "生成快捷键脚本", WS_VISIBLE | WS_CHILD, DPIScale(10), DPIScale(btnY2), DPIScale(160), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_SET_HOTKEY, g_hInst, NULL);
-
     g_hTxtScanInfo = CreateWindowExA(0, "STATIC", "", WS_VISIBLE | WS_CHILD | SS_LEFT | SS_PATHELLIPSIS | SS_NOPREFIX, DPIScale(180), DPIScale(btnY2 + 2), DPIScale(300), DPIScale(18), hwnd, NULL, g_hInst, NULL);
     g_hProgressBar = CreateWindowExA(0, PROGRESS_CLASSA, NULL, WS_VISIBLE | WS_CHILD | PBS_SMOOTH, DPIScale(500), DPIScale(btnY2 + 2), DPIScale(180), DPIScale(16), hwnd, (HMENU)(INT_PTR)ID_PROGRESS_BAR, g_hInst, NULL);
 
@@ -1276,5 +1262,5 @@ void CreateControls(HWND hwnd) {
     SetDefaultFont(g_hBtnSelAllL); SetDefaultFont(g_hBtnInvSelL); SetDefaultFont(g_hBtnSelAllR); SetDefaultFont(g_hBtnInvSelR);
     SetDefaultFont(g_hBtnExportR); SetDefaultFont(g_hTxtScanInfo);
     SetDefaultFont(g_hBtnRefresh); SetDefaultFont(g_hBtnAnalyze); SetDefaultFont(g_hBtnCreate); SetDefaultFont(g_hBtnRestore);
-    SetDefaultFont(g_hBtnHotkey); SetDefaultFont(g_hBtnAbout);
+    SetDefaultFont(g_hBtnAbout);
 }
