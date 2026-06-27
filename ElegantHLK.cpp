@@ -160,6 +160,7 @@ void FormatSize(LONGLONG bytes, char* buf, size_t maxLen);
 LONGLONG ParseSize(const char* str);
 void UpdateAdvancedFilters();
 bool IsAdvancedFiltered(const char* filename, LONGLONG fileSize);
+BOOL IsRiskyExt(const char* path);
 
 int DPIScale(int value) { return MulDiv(value, g_DPI, 96); }
 
@@ -530,7 +531,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             }
 
             case ID_BTN_REFRESH:
-                if (g_bScanning) { g_bCancelAnalysis = TRUE; break; }
+                if (g_bScanning) { g_bCancelAnalysis = TRUE; SetWindowTextA(g_hBtnRefresh, "正在停止..."); break; }
                 GetWindowTextA(g_hEditAddress, g_CurrentPath, 2048);
                 UpdateAdvancedFilters();
                 g_bScanning = TRUE; g_bCancelAnalysis = FALSE;
@@ -538,8 +539,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 SendMessage(g_hProgressBar, PBM_SETPOS, 0, 0);
                 SendMessageA(g_hFileList, LVM_DELETEALLITEMS, 0, 0);
                 SendMessageA(g_hHardlinkList, LVM_DELETEALLITEMS, 0, 0);
-                SetWindowTextA(g_hBtnRefresh, "正在停止...");
-                _beginthreadex(NULL, 0, ScanDirectoryThread, NULL, 0, NULL);
+                SetWindowTextA(g_hBtnRefresh, "停止扫描");
+                { HANDLE hT = (HANDLE)_beginthreadex(NULL, 0, ScanDirectoryThread, NULL, 0, NULL); if (hT) CloseHandle(hT); }
                 break;
 
             case ID_BTN_ANALYZE: {
@@ -575,7 +576,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 SendMessage(g_hProgressBar, PBM_SETPOS, 0, 0);
                 SendMessageA(g_hHardlinkList, LVM_DELETEALLITEMS, 0, 0);
                 SetWindowTextA(g_hBtnAnalyze, "终止分析");
-                _beginthreadex(NULL, 0, AnalyzeDirectoryThread, NULL, 0, NULL);
+                { HANDLE hT = (HANDLE)_beginthreadex(NULL, 0, AnalyzeDirectoryThread, NULL, 0, NULL); if (hT) CloseHandle(hT); }
                 break;
             }
 
@@ -602,13 +603,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
                     char path[2048] = { 0 };
                     GetListViewSubItemTextA(g_hHardlinkList, i, 0, path, 2048);
-                    char* ext = PathFindExtensionA(path);
-                    if (ext) {
-                        char extLower[32]; lstrcpynA(extLower, ext, 32); CharLowerA(extLower);
-                        if (strstr(".doc|.docx|.xls|.xlsx|.ppt|.pptx|.bak|.tmp|.wps", extLower) != NULL && strlen(extLower) > 1) {
-                            hasRiskyFiles = true; break;
-                        }
-                    }
+                    if (IsRiskyExt(path)) { hasRiskyFiles = true; break; }
                 }
 
                 g_bExcludeRisky = FALSE;
@@ -628,11 +623,35 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
                 g_bScanning = TRUE; g_bCancelAnalysis = FALSE;
                 SetWindowTextA(g_hBtnCreate, "终止转换");
-                _beginthreadex(NULL, 0, CreateHardlinksThread, NULL, 0, NULL);
+                { HANDLE hT = (HANDLE)_beginthreadex(NULL, 0, CreateHardlinksThread, NULL, 0, NULL); if (hT) CloseHandle(hT); }
                 break;
             }
 
             case ID_BTN_EXPORT_R: ExportHardlinkList(hwnd); break;
+            case ID_BTN_RESTORE_SLINK: {
+                int cnt = (int)SendMessageA(g_hHardlinkList, LVM_GETITEMCOUNT, 0, 0);
+                if (cnt == 0) { MessageBoxA(hwnd, "右侧列表为空，请先「分析文件(查重)」找出已有硬链接。", "提示", MB_OK | MB_ICONWARNING); break; }
+                int chk = 0; for (int i = 0; i < cnt; i++) if (ListView_GetCheckState(g_hHardlinkList, i)) chk++;
+                std::vector<std::string> targets;
+                for (int i = 0; i < cnt; i++) {
+                    if (chk > 0 && !ListView_GetCheckState(g_hHardlinkList, i)) continue;
+                    char hl[16] = { 0 }; GetListViewSubItemTextA(g_hHardlinkList, i, 4, hl, 16);
+                    if (hl[0] != '1') continue;
+                    char p[2048] = { 0 }; GetListViewSubItemTextA(g_hHardlinkList, i, 0, p, 2048);
+                    if (strlen(p) > 0) targets.push_back(p);
+                }
+                if (targets.empty()) { MessageBoxA(hwnd, "没有可解绑的项（需要第 5 列「硬链接」为 1）。", "提示", MB_OK | MB_ICONINFORMATION); break; }
+                char ask[256]; snprintf(ask, sizeof(ask), "将对 %zu 个文件执行解绑：先复制实数据到临时文件，再写回原路径，期间会临时占用同等空间。\n继续？", targets.size());
+                if (MessageBoxA(hwnd, ask, "解绑硬链接确认", MB_YESNO | MB_ICONQUESTION) != IDYES) break;
+                size_t okN = 0, failN = 0;
+                for (size_t i = 0; i < targets.size(); i++) {
+                    if (BreakHardlink(targets[i].c_str())) okN++; else failN++;
+                }
+                char done[256]; snprintf(done, sizeof(done), "解绑完成。\n\n成功：%zu\n失败：%zu", okN, failN);
+                MessageBoxA(hwnd, done, "完成", MB_OK | MB_ICONINFORMATION);
+                SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_BTN_REFRESH, BN_CLICKED), 0);
+                break;
+            }
             case ID_BTN_SET_HOTKEY: GenerateAHKScript(hwnd); break;
             case ID_BTN_ABOUT:
                 MessageBoxA(hwnd, "作者：恒烈 EternalBlaze\ngithub项目地址：https://github.com/Henglie/ElegantHLK\n开源协议：MIT", "关于作者", MB_OK | MB_ICONINFORMATION);
@@ -653,7 +672,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             else GetSafeFullPath(g_CurrentPath, selText, full, 2048);
 
             switch (LOWORD(wParam)) {
-            case IDM_COPY_FILENAME: CopyToClipboard(hwnd, selText); break;
+            case IDM_COPY_FILENAME: {
+                const char* baseName = strrchr(selText, '\\');
+                CopyToClipboard(hwnd, baseName ? baseName + 1 : selText);
+                break;
+            }
             case IDM_COPY_PATH: CopyToClipboard(hwnd, full); break;
             case IDM_COPY_SHA256: {
                 if (isHardlinkList) {
@@ -666,6 +689,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             case IDM_OPEN_EXPLORER: {
                 char param[2048 + 20]; snprintf(param, sizeof(param), "/select,\"%s\"", full);
                 ShellExecuteA(NULL, "open", "explorer.exe", param, NULL, SW_SHOWNORMAL); break;
+            }
+            case IDM_DELETE: {
+                if (selIdx == -1 || strlen(full) == 0) break;
+                char prompt[2200]; snprintf(prompt, sizeof(prompt), "确定将此项送入回收站？\n\n%s", full);
+                if (MessageBoxA(hwnd, prompt, "删除到回收站", MB_YESNO | MB_ICONWARNING) != IDYES) break;
+                char dblNull[2052] = { 0 }; lstrcpynA(dblNull, full, 2050);
+                SHFILEOPSTRUCTA op = { 0 };
+                op.hwnd = hwnd; op.wFunc = FO_DELETE; op.pFrom = dblNull;
+                op.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT;
+                if (SHFileOperationA(&op) == 0 && !op.fAnyOperationsAborted) {
+                    SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_BTN_REFRESH, BN_CLICKED), 0);
+                }
+                break;
             }
             case IDM_CREATE_HLINK_CTX: {
                 DWORD attr = (DWORD)GetListViewParamA(hActiveList, selIdx);
@@ -1000,15 +1036,9 @@ unsigned __stdcall CreateHardlinksThread(void* pArguments) {
                 if (g_bCancelAnalysis) break;
                 std::string target = paths[i];
 
-                if (g_bExcludeRisky) {
-                    char* ext = PathFindExtensionA(target.c_str());
-                    if (ext) {
-                        char extLower[32]; lstrcpynA(extLower, ext, 32); CharLowerA(extLower);
-                        if (strstr(".doc|.docx|.xls|.xlsx|.ppt|.pptx|.bak|.tmp|.wps", extLower) != NULL && strlen(extLower) > 1) {
-                            failCount++;
-                            continue;
-                        }
-                    }
+                if (g_bExcludeRisky && IsRiskyExt(target.c_str())) {
+                    failCount++;
+                    continue;
                 }
 
                 std::string targetBak = target + ".hlbak";
@@ -1029,6 +1059,15 @@ unsigned __stdcall CreateHardlinksThread(void* pArguments) {
     }
     PostMessage(g_hMainWnd, WM_USER_CREATE_DONE, (WPARAM)successCount, (LPARAM)failCount);
     return 0;
+}
+
+BOOL IsRiskyExt(const char* path) {
+    const char* ext = PathFindExtensionA(path);
+    if (!ext || ext[0] != '.') return FALSE;
+    char extLower[32]; lstrcpynA(extLower, ext, 32); CharLowerA(extLower);
+    static const char* RISKY[] = { ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".bak", ".tmp", ".wps", NULL };
+    for (int i = 0; RISKY[i]; i++) if (lstrcmpA(extLower, RISKY[i]) == 0) return TRUE;
+    return FALSE;
 }
 
 BOOL BreakHardlink(const char* filepath) {
@@ -1128,8 +1167,9 @@ void AddListItem(HWND hList, const char* col0, const char* col1, const char* col
 }
 
 void SetDefaultFont(HWND hwnd) {
-    HFONT hFont = CreateFontA(DPIScale(15), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH | FF_SWISS, "Microsoft YaHei");
-    SendMessageA(hwnd, WM_SETFONT, (WPARAM)hFont, MAKELPARAM(TRUE, 0));
+    static HFONT s_hFont = NULL;
+    if (!s_hFont) s_hFont = CreateFontA(DPIScale(15), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH | FF_SWISS, "Microsoft YaHei");
+    SendMessageA(hwnd, WM_SETFONT, (WPARAM)s_hFont, MAKELPARAM(TRUE, 0));
 }
 
 void ShowFileContextMenu(HWND hwnd, POINT pt, BOOL isHardlinkList) {
@@ -1137,7 +1177,6 @@ void ShowFileContextMenu(HWND hwnd, POINT pt, BOOL isHardlinkList) {
     AppendMenuA(hMenu, MF_STRING, IDM_COPY_FILENAME, (LPCSTR)"复制文件名");
     AppendMenuA(hMenu, MF_STRING, IDM_COPY_PATH, (LPCSTR)"复制完整路径");
     if (isHardlinkList) AppendMenuA(hMenu, MF_STRING, IDM_COPY_SHA256, (LPCSTR)"复制 SHA256 (用于比对)");
-    AppendMenuA(hMenu, MF_STRING, IDM_PASTE, (LPCSTR)"粘贴至当前目录 (需借助脚本)");
     AppendMenuA(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenuA(hMenu, MF_STRING, IDM_OPEN_EXPLORER, (LPCSTR)"在资源管理器中定位");
     if (isHardlinkList) AppendMenuA(hMenu, MF_STRING, IDM_CREATE_HLINK_CTX, (LPCSTR)"对该文件创建硬链接");
