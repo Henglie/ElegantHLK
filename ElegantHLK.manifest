@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity type="win32" name="Henglie.ElegantHLK" version="1.1.2.0" processorArchitecture="*"/>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <!-- 强制本进程使用系统区域设置的传统 ANSI 代码页（中文系统为 936/GBK），
+           即使系统开启了「Beta：使用 Unicode UTF-8 提供全球语言支持」（ACP=65001）。
+           源码字符串为 GBK 字节，全部走 A 版 Win32 API，legacy 可避免被当 UTF-8 解码而乱码。
+           仅 Win10 1903+ 识别，老系统（含 XP）忽略此字段，不影响原有兼容性。 -->
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">legacy</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

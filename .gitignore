@@ -1,6 +1,9 @@
 # 快照备份（本地留档，不推送）
 快照备份/
 
+# 开发 / AI 接管文档（内部留档，不进公开仓库）
+PROGRESS.md
+
 # 发布产物（通过 GitHub Releases 分发，不进源码树）
 ElegantHLK_x64.exe
 ElegantHLK_x86.exe

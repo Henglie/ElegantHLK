@@ -159,6 +159,7 @@ LONGLONG ParseSize(const char* str);
 void UpdateAdvancedFilters();
 bool IsAdvancedFiltered(const char* filename, LONGLONG fileSize);
 BOOL IsRiskyExt(const char* path);
+BOOL IsProtectedPath(const char* path);
 
 int DPIScale(int value) { return MulDiv(value, g_DPI, 96); }
 
@@ -1032,6 +1033,10 @@ unsigned __stdcall CreateHardlinksThread(void* pArguments) {
                 if (g_bCancelAnalysis) break;
                 std::string target = paths[i];
 
+                if (IsProtectedPath(target.c_str()) || IsProtectedPath(master.c_str())) {
+                    failCount++;
+                    continue;
+                }
                 if (g_bExcludeRisky && IsRiskyExt(target.c_str())) {
                     failCount++;
                     continue;
@@ -1063,6 +1068,29 @@ BOOL IsRiskyExt(const char* path) {
     char extLower[32]; lstrcpynA(extLower, ext, 32); CharLowerA(extLower);
     static const char* RISKY[] = { ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".bak", ".tmp", ".wps", NULL };
     for (int i = 0; RISKY[i]; i++) if (lstrcmpA(extLower, RISKY[i]) == 0) return TRUE;
+    return FALSE;
+}
+
+BOOL IsProtectedPath(const char* path) {
+    char full[MAX_PATH * 2];
+    if (!GetFullPathNameA(path, sizeof(full), full, NULL)) {
+        lstrcpynA(full, path, sizeof(full));
+    }
+    char pathLower[MAX_PATH * 2];
+    lstrcpynA(pathLower, full, sizeof(pathLower));
+    CharLowerA(pathLower);
+    const char* envVars[] = { "SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData", "windir", NULL };
+    for (int i = 0; envVars[i]; i++) {
+        char dir[MAX_PATH];
+        DWORD n = GetEnvironmentVariableA(envVars[i], dir, sizeof(dir));
+        if (n == 0 || n >= sizeof(dir)) continue;
+        CharLowerA(dir);
+        size_t len = strlen(dir);
+        if (len > 0 && _strnicmp(pathLower, dir, len) == 0) {
+            char nextCh = pathLower[len];
+            if (nextCh == 92 || nextCh == 47 || nextCh == 0) return TRUE;
+        }
+    }
     return FALSE;
 }
 
