@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity type="win32" name="Henglie.ElegantHLK" version="1.1.2.0" processorArchitecture="*"/>
+  <assemblyIdentity type="win32" name="Henglie.ElegantHLK" version="1.2.0.0" processorArchitecture="*"/>
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
       <!-- 强制本进程使用系统区域设置的传统 ANSI 代码页（中文系统为 936/GBK），

@@ -7,8 +7,10 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ElegantHLK", "ElegantHLK.vc
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|ARM64 = Debug|ARM64
 		Debug|x64 = Debug|x64
 		Debug|x86 = Debug|x86
+		Release|ARM64 = Release|ARM64
 		Release|x64 = Release|x64
 		Release|x86 = Release|x86
 	EndGlobalSection
@@ -21,6 +23,10 @@ Global
 		{9E708030-9E89-4A0D-AA41-4DE6224B3286}.Release|x64.Build.0 = Release|x64
 		{9E708030-9E89-4A0D-AA41-4DE6224B3286}.Release|x86.ActiveCfg = Release|Win32
 		{9E708030-9E89-4A0D-AA41-4DE6224B3286}.Release|x86.Build.0 = Release|Win32
+		{9E708030-9E89-4A0D-AA41-4DE6224B3286}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{9E708030-9E89-4A0D-AA41-4DE6224B3286}.Debug|ARM64.Build.0 = Debug|ARM64
+		{9E708030-9E89-4A0D-AA41-4DE6224B3286}.Release|ARM64.ActiveCfg = Release|ARM64
+		{9E708030-9E89-4A0D-AA41-4DE6224B3286}.Release|ARM64.Build.0 = Release|ARM64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
