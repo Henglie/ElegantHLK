@@ -3,6 +3,7 @@
 
 # 开发 / AI 接管文档（内部留档，不进公开仓库）
 PROGRESS.md
+.workbuddy/
 
 # 发布产物（通过 GitHub Releases 分发，不进源码树）
 ElegantHLK_x64.exe
