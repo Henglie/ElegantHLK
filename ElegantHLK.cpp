@@ -14,6 +14,7 @@
 #include <commdlg.h>
 #include <wincrypt.h>
 #include <uxtheme.h>  // v1.2 暗色主题（XP 起自带，无需新依赖） 
+#include <aclapi.h>     // v1.3: GetNamedSecurityInfo / SetEntriesInAcl
 #include <stdio.h>
 #include <process.h>
 #include <string.h>
@@ -32,6 +33,14 @@
 
 #ifndef ListView_GetCheckState
 #define ListView_GetCheckState(hwndLV, i) ((((UINT)(SendMessageA((hwndLV), LVM_GETITEMSTATE, (WPARAM)(i), LVIS_STATEIMAGEMASK))) >> 12) - 1)
+#endif
+
+// v1.3: symbolic link support
+#ifndef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+#define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE 0x2
+#endif
+#ifndef IO_REPARSE_TAG_SYMLINK
+#define IO_REPARSE_TAG_SYMLINK (0xA000000CL)
 #endif
 
 #pragma comment(lib, "gdiplus.lib")
@@ -73,6 +82,7 @@
 #define ID_BTN_DELETE_DUPS   1022
 #define ID_BTN_LANG          1023
 #define ID_BTN_THEME         1024
+#define ID_CHK_SLINK         1025
 
 #define IDM_COPY_FILENAME    2001
 #define IDM_COPY_PATH        2002
@@ -101,6 +111,10 @@ HWND g_hTxtTotalSaved, g_hProgressBar, g_hGroupFilter;
 HWND g_hBtnSelAllL, g_hBtnInvSelL, g_hBtnSelAllR, g_hBtnInvSelR;
 HWND g_hBtnExportR, g_hTxtScanInfo;
 HWND g_hBtnDelDup, g_hBtnLang, g_hBtnTheme; // v1.2 新增按钮
+HWND g_hChkSlink;               // v1.3: 软连接模式复选框
+BOOL g_bSlinkMode = FALSE;      // v1.3: TRUE = 一键转换时建软连接
+int g_AnchorL = -1, g_AnchorR = -1; // v1.3: Shift 范围勾选的锚点行
+volatile LONG g_nAclFixed = 0;  // v1.3: 本轮 ACL 权限接管成功次数
 char g_szScanFile[2048] = "";
 volatile int g_nScanCounter = 0;
 
@@ -173,11 +187,13 @@ enum StrId {
     S_MSG_EMPTY_R_SIMPLE, S_MSG_DELDUP_ASK, S_T_DELDUP, S_MSG_DELDUP_DONE, S_MSG_DELDUP_NONE, S_SKIPPED_PROTECTED,
     S_TXT_TITLE, S_TXT_GROUP, S_TXT_KEEP, S_TXT_DUP, S_TXT_HINT,
     S_MENU_FOLLOW, S_MENU_LIGHT, S_MENU_DARK,
+    S_CHK_SLINK, S_BTN_CREATE_SL, S_MSG_CONFIRM_ALL_SL, S_MSG_CONFIRM_SEL_SL,
+    S_MSG_CREATE_DONE_SL, S_MSG_SL_FAIL_HINT, S_MSG_SL_NO_SUPPORT, S_ACL_COUNT_FMT,
     S__COUNT
 };
 
 static const char* const STR_TBL[S__COUNT][2] = {
-    { "优雅硬链接 V1.2", "ElegantHLK V1.2" },                                       // S_TITLE
+    { "优雅硬链接 V1.3", "ElegantHLK V1.3" },                                       // S_TITLE
     { "磁盘:", "Disk:" },                                                           // S_DISK
     { "地址:", "Path:" },                                                           // S_ADDR
     { "类型:", "Type:" },                                                           // S_TYPE
@@ -290,6 +306,14 @@ static const char* const STR_TBL[S__COUNT][2] = {
     { "跟随系统", "Follow System" },                                                // S_MENU_FOLLOW
     { "浅色", "Light" },                                                            // S_MENU_LIGHT
     { "深色", "Dark" },                                                             // S_MENU_DARK
+    { "软连接模式", "Symlink mode" },                                          // S_CHK_SLINK
+    { "一键创建软连接", "Create Symlinks" },                                     // S_BTN_CREATE_SL
+    { "将为【所有】重复文件创建软连接，指向每组第 1 个文件（可跨盘符）。\n软连接只是链接，源文件被移动或删除后会失效。\n\n确定继续吗？", "Will create symlinks for ALL duplicate files, each pointing to the 1st file of its group (works across volumes).\nA symlink breaks when the source file is moved or deleted.\n\nContinue?" }, // S_MSG_CONFIRM_ALL_SL
+    { "将为【勾选】的重复文件创建软连接，指向每组第 1 个文件（可跨盘符）。\n软连接只是链接，源文件被移动或删除后会失效。\n\n继续？", "Will create symlinks for the CHECKED duplicate files, each pointing to the 1st file of its group (works across volumes).\nA symlink breaks when the source file is moved or deleted.\n\nContinue?" }, // S_MSG_CONFIRM_SEL_SL
+    { "软连接批量创建完成！\n\n成功创建: %zu 个\n失败: %zu 个\n\n(即将自动刷新目录)", "Batch symlink creation done!\n\nCreated: %zu\nFailed: %zu\n\n(The directory will refresh automatically)" }, // S_MSG_CREATE_DONE_SL
+    { "部分软连接创建失败，常见原因：当前账户没有 SeCreateSymbolicLink 权限。\n解决办法：右键「以管理员身份运行」本程序；或在 Win10 创意者更新及以上系统开启「开发者模式」。", "Some symlinks failed. Common cause: the current account lacks the SeCreateSymbolicLink privilege.\nFix: run this program as administrator, or enable Developer Mode on Windows 10 (1703+)." }, // S_MSG_SL_FAIL_HINT
+    { "当前系统不支持创建软连接（需要 Windows Vista 及以上）。", "This system cannot create symbolic links (Windows Vista or later required)." }, // S_MSG_SL_NO_SUPPORT
+    { "(其中通过权限接管访问: %zu 个)", "(accessed via ownership takeover: %zu)" }, // S_ACL_COUNT_FMT
 };
 
 int g_LangMode = 0; // 0=跟随系统 1=中文 2=English
@@ -333,6 +357,18 @@ DWORD RegGetDword(const char* name, DWORD defVal);
 void RegSetDword(const char* name, DWORD val);
 void DrawThemedButton(LPDRAWITEMSTRUCT dis);
 void DrawThemedMenuItem(LPDRAWITEMSTRUCT dis);
+// v1.3: ACL 权限兜底（issue：即便提权，仍有属主/DACL 拒绝访问的文件）
+typedef struct {
+    char path[2048];
+    BOOL active;
+    PSECURITY_DESCRIPTOR sd;
+    PSID owner, group;
+    PACL dacl, sacl;
+} AclRestore;
+static void AclRestoreAccess(AclRestore* st);
+static BOOL AclGrantAccess(const char* path, BOOL isDir, AclRestore* st);
+static HANDLE OpenFileExAcl(const char* path, DWORD access, DWORD share, DWORD flags, AclRestore* st);
+static BOOL CreateSymbolicLinkSmart(const char* linkPath, const char* targetPath);
 
 int DPIScale(int value) { return MulDiv(value, g_DPI, 96); }
 
@@ -373,11 +409,13 @@ LPARAM GetListViewParamA(HWND hList, int iItem) {
 }
 
 void GetSafeFullPath(const char* dir, const char* file, char* outPath, size_t maxLen) {
-    snprintf(outPath, maxLen, (dir[strlen(dir) - 1] == '\\') ? "%s%s" : "%s\\%s", dir, file);
+    size_t dl = strlen(dir); // v1.3: 空串防越界
+    snprintf(outPath, maxLen, (dl > 0 && dir[dl - 1] == '\\') ? "%s%s" : "%s\\%s", dir, file);
 }
 
 BOOL CalculateFileSHA256(const char* filename, std::string& outHash) {
-    HANDLE hFile = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+    AclRestore acl; // v1.3: ACL 兜底（无权限读时接管后重试）
+    HANDLE hFile = OpenFileExAcl(filename, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_FLAG_SEQUENTIAL_SCAN, &acl);
     if (hFile == INVALID_HANDLE_VALUE) return FALSE;
 
     HCRYPTPROV hProv = 0; HCRYPTHASH hHash = 0; BOOL bResult = FALSE;
@@ -408,6 +446,7 @@ BOOL CalculateFileSHA256(const char* filename, std::string& outHash) {
         CryptReleaseContext(hProv, 0);
     }
     CloseHandle(hFile);
+    AclRestoreAccess(&acl); // v1.3: 只读打开，对象未变，立即还原
     return bResult;
 }
 
@@ -616,6 +655,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         MoveWindow(g_hBtnCreate, DPIScale(280), btnY, DPIScale(140), DPIScale(35), TRUE);
         MoveWindow(g_hBtnRestore, DPIScale(430), btnY, DPIScale(130), DPIScale(35), TRUE);
         MoveWindow(g_hBtnDelDup, DPIScale(570), btnY, DPIScale(140), DPIScale(35), TRUE);
+        MoveWindow(g_hChkSlink, DPIScale(720), btnY + DPIScale(3), DPIScale(130), DPIScale(28), TRUE); // v1.3
 
         int btnY2 = cy - DPIScale(40);
         int progW = DPIScale(180);
@@ -737,6 +777,34 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 return CDRF_NEWFONT;
             }
         }
+        // v1.3: 多选增强——Shift 点首尾把范围内全勾/全不勾（以锚点行勾选态为准），Ctrl 单个勾/取消
+        if ((lpnmh->idFrom == ID_LIST_FILE || lpnmh->idFrom == ID_LIST_HARDLINK) && lpnmh->code == LVN_ITEMCHANGED) {
+            LPNMLISTVIEW pnmv = (LPNMLISTVIEW)lParam;
+            if ((pnmv->uChanged & LVIF_STATE) && (pnmv->uNewState & LVIS_SELECTED) && !(pnmv->uOldState & LVIS_SELECTED)) {
+                static BOOL s_bRangeBusy = FALSE;
+                if (!s_bRangeBusy) {
+                    HWND hList = pnmv->hdr.hwndFrom;
+                    int* pAnchor = (hList == g_hHardlinkList) ? &g_AnchorR : &g_AnchorL;
+                    if (GetKeyState(VK_SHIFT) < 0) {
+                        int anchor = (*pAnchor >= 0) ? *pAnchor : pnmv->iItem;
+                        int lo = (anchor < pnmv->iItem) ? anchor : pnmv->iItem;
+                        int hi = (anchor < pnmv->iItem) ? pnmv->iItem : anchor;
+                        BOOL mark = ListView_GetCheckState(hList, anchor);
+                        s_bRangeBusy = TRUE; // 批量勾选会触发嵌套通知，用标记短路
+                        for (int i = lo; i <= hi; i++)
+                            ListView_SetItemState(hList, i, INDEXTOSTATEIMAGEMASK(mark ? 2 : 1), LVIS_STATEIMAGEMASK);
+                        s_bRangeBusy = FALSE;
+                    }
+                    else if (GetKeyState(VK_CONTROL) < 0) {
+                        BOOL cur = ListView_GetCheckState(hList, pnmv->iItem);
+                        ListView_SetItemState(hList, pnmv->iItem, INDEXTOSTATEIMAGEMASK(cur ? 1 : 2), LVIS_STATEIMAGEMASK);
+                    }
+                    else {
+                        *pAnchor = pnmv->iItem;
+                    }
+                }
+            }
+        }
         break;
     }
 
@@ -786,6 +854,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 SendMessage(g_hProgressBar, PBM_SETPOS, 0, 0);
                 SendMessageA(g_hFileList, LVM_DELETEALLITEMS, 0, 0);
                 SendMessageA(g_hHardlinkList, LVM_DELETEALLITEMS, 0, 0);
+                g_AnchorL = g_AnchorR = -1; // v1.3: 列表清空后锚点复位
                 SetWindowTextA(g_hBtnRefresh, TR(S_STOP_SCAN));
                 { HANDLE hT = (HANDLE)_beginthreadex(NULL, 0, ScanDirectoryThread, NULL, 0, NULL); if (hT) CloseHandle(hT); }
                 break;
@@ -820,8 +889,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 UpdateAdvancedFilters();
                 g_bScanning = TRUE; g_bCancelAnalysis = FALSE;
                 g_llTotalSavedSpace = 0;
+                g_nAclFixed = 0; // v1.3
+
                 SendMessage(g_hProgressBar, PBM_SETPOS, 0, 0);
                 SendMessageA(g_hHardlinkList, LVM_DELETEALLITEMS, 0, 0);
+                g_AnchorL = g_AnchorR = -1; // v1.3: 列表清空后锚点复位
                 SetWindowTextA(g_hBtnAnalyze, TR(S_STOP_ANALYZE));
                 { HANDLE hT = (HANDLE)_beginthreadex(NULL, 0, AnalyzeDirectoryThread, NULL, 0, NULL); if (hT) CloseHandle(hT); }
                 break;
@@ -861,11 +933,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 }
                 else {
                     if (checkedCount == 0) {
-                        if (MessageBoxA(hwnd, TR(S_MSG_CONFIRM_ALL), TR(S_T_CONFIRM_ALL), MB_YESNO | MB_ICONWARNING) != IDYES) break;
+                        // v1.3: 软连接模式用专门确认文案，说明软连接语义
+                        if (MessageBoxA(hwnd, g_bSlinkMode ? TR(S_MSG_CONFIRM_ALL_SL) : TR(S_MSG_CONFIRM_ALL), TR(S_T_CONFIRM_ALL), MB_YESNO | MB_ICONWARNING) != IDYES) break;
                     }
                     else {
-                        if (MessageBoxA(hwnd, TR(S_MSG_CONFIRM_SEL), TR(S_T_CONFIRM_SEL), MB_YESNO | MB_ICONINFORMATION) != IDYES) break;
+                        if (MessageBoxA(hwnd, g_bSlinkMode ? TR(S_MSG_CONFIRM_SEL_SL) : TR(S_MSG_CONFIRM_SEL), TR(S_T_CONFIRM_SEL), MB_YESNO | MB_ICONINFORMATION) != IDYES) break;
                     }
+                }
+
+                // v1.3: XP 等系统没有软连接 API，提前拦截
+                if (g_bSlinkMode && !GetProcAddress(GetModuleHandleA("kernel32.dll"), "CreateSymbolicLinkA")) {
+                    MessageBoxA(hwnd, TR(S_MSG_SL_NO_SUPPORT), TR(S_T_ERROR), MB_OK | MB_ICONERROR);
+                    break;
                 }
 
                 g_bScanning = TRUE; g_bCancelAnalysis = FALSE;
@@ -924,6 +1003,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             }
             case ID_BTN_ABOUT:
                 MessageBoxA(hwnd, TR(S_MSG_ABOUT), TR(S_BTN_ABOUT), MB_OK | MB_ICONINFORMATION);
+                break;
+            case ID_CHK_SLINK: // v1.3: 软连接模式开关，转换按钮文字跟着切
+                g_bSlinkMode = (SendMessageA(g_hChkSlink, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                SetWindowTextA(g_hBtnCreate, g_bSlinkMode ? TR(S_BTN_CREATE_SL) : TR(S_BTN_CREATE));
                 break;
             }
         }
@@ -997,7 +1080,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         SendMessage(g_hProgressBar, PBM_SETPOS, 0, 0);
         SetWindowTextA(g_hBtnRefresh, TR(S_BTN_REFRESH));
         SetWindowTextA(g_hBtnAnalyze, TR(S_BTN_ANALYZE));
-        SetWindowTextA(g_hBtnCreate, TR(S_BTN_CREATE));
+        SetWindowTextA(g_hBtnCreate, g_bSlinkMode ? TR(S_BTN_CREATE_SL) : TR(S_BTN_CREATE)); // v1.3
         char totalBuf[128]; FormatSize(g_llTotalSavedSpace, totalBuf, sizeof(totalBuf));
         char finalStr[256]; snprintf(finalStr, sizeof(finalStr), TR(S_TOTAL_SAVED_FMT), totalBuf);
         SetWindowTextA(g_hTxtTotalSaved, finalStr);
@@ -1011,7 +1094,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         SetWindowTextA(g_hTxtScanInfo, "");
         SetWindowTextA(g_hBtnRefresh, TR(S_BTN_REFRESH));
         SetWindowTextA(g_hBtnAnalyze, TR(S_BTN_ANALYZE));
-        SetWindowTextA(g_hBtnCreate, TR(S_BTN_CREATE));
+        SetWindowTextA(g_hBtnCreate, g_bSlinkMode ? TR(S_BTN_CREATE_SL) : TR(S_BTN_CREATE)); // v1.3
 
         char totalBuf[128]; FormatSize(g_llTotalSavedSpace, totalBuf, sizeof(totalBuf));
         double dElapsed = g_StatElapsedMs / 1000.0;
@@ -1023,10 +1106,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         BOOL bCancelled = (BOOL)lParam; size_t count = (size_t)wParam;
         if (bCancelled) MessageBoxA(hwnd, TR(S_MSG_ANALYZE_CANCELLED), TR(S_T_TIP), MB_OK | MB_ICONINFORMATION);
         else {
-            char msg[512];
+            char msg[800]; // v1.3: 可能拼接权限接管统计
             snprintf(msg, sizeof(msg),
                 TR(S_MSG_ANALYZE_DONE),
                 g_StatGroupCount, g_StatDupFileCount, count, totalBuf, dElapsed);
+            if (g_nAclFixed > 0) {
+                char aclLine[224];
+                snprintf(aclLine, sizeof(aclLine), TR(S_ACL_COUNT_FMT), (size_t)g_nAclFixed);
+                lstrcatA(msg, "\n");
+                lstrcatA(msg, aclLine);
+            }
             MessageBoxA(hwnd, msg, TR(S_T_ANALYZE_DONE), MB_OK | MB_ICONINFORMATION);
         }
         break;
@@ -1037,13 +1126,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         SendMessage(g_hProgressBar, PBM_SETPOS, 0, 0);
         SetWindowTextA(g_hBtnRefresh, TR(S_BTN_REFRESH));
         SetWindowTextA(g_hBtnAnalyze, TR(S_BTN_ANALYZE));
-        SetWindowTextA(g_hBtnCreate, TR(S_BTN_CREATE));
+        SetWindowTextA(g_hBtnCreate, g_bSlinkMode ? TR(S_BTN_CREATE_SL) : TR(S_BTN_CREATE)); // v1.3
 
         size_t successCount = (size_t)wParam;
         size_t failCount = (size_t)lParam;
 
-        char msg[256];
-        snprintf(msg, sizeof(msg), TR(S_MSG_CREATE_DONE), successCount, failCount);
+        char msg[1600]; // v1.3: 软连接模式可能拼接失败原因提示
+        snprintf(msg, sizeof(msg), g_bSlinkMode ? TR(S_MSG_CREATE_DONE_SL) : TR(S_MSG_CREATE_DONE), successCount, failCount);
+        if (g_nAclFixed > 0) {
+            char aclLine[224];
+            snprintf(aclLine, sizeof(aclLine), TR(S_ACL_COUNT_FMT), (size_t)g_nAclFixed);
+            lstrcatA(msg, "\n");
+            lstrcatA(msg, aclLine);
+        }
+        if (g_bSlinkMode && failCount > 0) {
+            lstrcatA(msg, "\n\n");
+            lstrcatA(msg, TR(S_MSG_SL_FAIL_HINT));
+        }
         MessageBoxA(hwnd, msg, TR(S_T_OP_DONE), MB_OK | MB_ICONINFORMATION);
 
         SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_BTN_REFRESH, BN_CLICKED), 0);
@@ -1107,7 +1206,8 @@ unsigned __stdcall ScanDirectoryThread(void* pArguments) {
             if (isDir) { AddListItem(g_hFileList, fd.cFileName, "", TR(S_FOLDER), "", NULL, fd.dwFileAttributes); continue; }
 
             char fullPath[2048]; GetSafeFullPath(g_CurrentPath, fd.cFileName, fullPath, 2048);
-            HANDLE hFile = CreateFileA(fullPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+            AclRestore acl; // v1.3: ACL 兜底
+            HANDLE hFile = OpenFileExAcl(fullPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, &acl);
             if (hFile != INVALID_HANDLE_VALUE) {
                 BY_HANDLE_FILE_INFORMATION fileInfo;
                 if (GetFileInformationByHandle(hFile, &fileInfo)) {
@@ -1119,6 +1219,7 @@ unsigned __stdcall ScanDirectoryThread(void* pArguments) {
                     else AddListItem(g_hFileList, fd.cFileName, sizeStr, infoStr, hlFlag, NULL, fd.dwFileAttributes);
                 }
                 CloseHandle(hFile);
+                AclRestoreAccess(&acl); // v1.3: 只读打开，立即还原
             }
             else AddListItem(g_hFileList, fd.cFileName, sizeStr, TR(S_NO_PERM), "", NULL, fd.dwFileAttributes);
         } while (FindNextFileA(hFind, &fd));
@@ -1141,6 +1242,8 @@ void CollectFilesRecursively(const std::string& folder, std::vector<FileNode>& f
         do {
             if (g_bCancelAnalysis) break;
             if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) continue;
+            // v1.3: 跳过软连接（链接不是重复数据本体，也避免跟着链接进死循环）
+            if ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && fd.dwReserved0 == IO_REPARSE_TAG_SYMLINK) continue;
             char fullPath[2048]; GetSafeFullPath(folder.c_str(), fd.cFileName, fullPath, 2048);
 
             if ((++g_nScanCounter & 0x3F) == 0) {
@@ -1163,6 +1266,16 @@ void CollectFilesRecursively(const std::string& folder, std::vector<FileNode>& f
     }
 }
 
+// v1.3: GetTickCount64 needs _WIN32_WINNT>=0x600 to declare; load dynamically for XP safety
+static ULONGLONG NowTick64() {
+    typedef ULONGLONG (WINAPI *GTC64_T)(void);
+    static GTC64_T pGtc64 = NULL;
+    static BOOL s_looked = FALSE;
+    if (!s_looked) { s_looked = TRUE; pGtc64 = (GTC64_T)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetTickCount64"); }
+    if (pGtc64) return pGtc64();
+    return (ULONGLONG)GetTickCount(); // XP: 32-bit ms
+}
+
 unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
     g_llTotalSavedSpace = 0;
     g_nScanCounter = 0;
@@ -1173,7 +1286,7 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
     EnterCriticalSection(&g_csParity);
     g_GroupParity.clear();
     LeaveCriticalSection(&g_csParity);
-    DWORD dwAnalyzeStart = GetTickCount();
+    ULONGLONG dwAnalyzeStart = NowTick64(); // v1.3: 64-bit counter, no wraparound
 
     snprintf(g_szScanFile, sizeof(g_szScanFile), TR(S_COLLECTING));
     PostMessage(g_hMainWnd, WM_USER_UPDATE_SCANFILE, 0, 0);
@@ -1185,29 +1298,30 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
     size_t totalHardlinksToCreate = 0;
 
     if (!g_bCancelAnalysis) {
-        std::map<LONGLONG, std::vector<FileNode>> sizeMap;
+        std::map<LONGLONG, std::vector<size_t>> sizeMap; // v1.3: 存下标代替拷贝 FileNode，大目录更省内存
         for (size_t i = 0; i < allFiles.size(); ++i) {
             if (g_bCancelAnalysis) break;
-            if (allFiles[i].size.QuadPart > 0) sizeMap[allFiles[i].size.QuadPart].push_back(allFiles[i]);
+            if (allFiles[i].size.QuadPart > 0) sizeMap[allFiles[i].size.QuadPart].push_back(i);
         }
 
         size_t totalHashTasks = 0;
-        for (std::map<LONGLONG, std::vector<FileNode>>::iterator it = sizeMap.begin(); it != sizeMap.end(); ++it) {
+        for (std::map<LONGLONG, std::vector<size_t>>::iterator it = sizeMap.begin(); it != sizeMap.end(); ++it) {
             if (it->second.size() > 1) totalHashTasks += it->second.size();
         }
 
         size_t completedTasks = 0;
 
-        for (std::map<LONGLONG, std::vector<FileNode>>::iterator it = sizeMap.begin(); it != sizeMap.end(); ++it) {
+        for (std::map<LONGLONG, std::vector<size_t>>::iterator it = sizeMap.begin(); it != sizeMap.end(); ++it) {
             if (g_bCancelAnalysis) break;
             if (it->second.size() > 1) {
-                std::map<std::string, std::vector<FileNode>> hashMap;
+                std::map<std::string, std::vector<size_t>> hashMap; // v1.3: 同样只存下标
                 for (size_t i = 0; i < it->second.size(); ++i) {
                     if (g_bCancelAnalysis) break;
-                    snprintf(g_szScanFile, sizeof(g_szScanFile), TR(S_HASHING_FMT), it->second[i].fullPath.c_str());
+                    FileNode& fn = allFiles[it->second[i]];
+                    snprintf(g_szScanFile, sizeof(g_szScanFile), TR(S_HASHING_FMT), fn.fullPath.c_str());
                     PostMessage(g_hMainWnd, WM_USER_UPDATE_SCANFILE, 0, 0);
                     std::string hashVal;
-                    if (CalculateFileSHA256(it->second[i].fullPath.c_str(), hashVal)) {
+                    if (CalculateFileSHA256(fn.fullPath.c_str(), hashVal)) {
                         hashMap[hashVal].push_back(it->second[i]);
                     }
                     completedTasks++;
@@ -1216,20 +1330,26 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
                     }
                 }
 
-                for (std::map<std::string, std::vector<FileNode>>::iterator hit = hashMap.begin(); hit != hashMap.end(); ++hit) {
+                for (std::map<std::string, std::vector<size_t>>::iterator hit = hashMap.begin(); hit != hashMap.end(); ++hit) {
                     if (g_bCancelAnalysis) break;
                     if (hit->second.size() > 1) {
 
+                        // v1.3: 打开一次同时拿文件 ID 与链接数，下面展示阶段不再逐个重开
                         std::map<ULONGLONG, int> physicalFiles;
+                        std::vector<DWORD> linksOf(hit->second.size(), 0);
                         for (size_t k = 0; k < hit->second.size(); ++k) {
-                            HANDLE hFile = CreateFileA(hit->second[k].fullPath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+                            FileNode& fn = allFiles[hit->second[k]];
+                            AclRestore acl; // v1.3: ACL 兜底
+                            HANDLE hFile = OpenFileExAcl(fn.fullPath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, &acl);
                             if (hFile != INVALID_HANDLE_VALUE) {
                                 BY_HANDLE_FILE_INFORMATION fi;
                                 if (GetFileInformationByHandle(hFile, &fi)) {
                                     ULONGLONG fileId = ((ULONGLONG)fi.nFileIndexHigh << 32) | fi.nFileIndexLow;
                                     physicalFiles[fileId]++;
+                                    linksOf[k] = fi.nNumberOfLinks;
                                 }
                                 CloseHandle(hFile);
+                                AclRestoreAccess(&acl);
                             }
                         }
 
@@ -1253,19 +1373,13 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
 
                         for (size_t k = 0; k < hit->second.size(); ++k) {
                             if (g_bCancelAnalysis) break;
+                            FileNode& fn = allFiles[hit->second[k]];
                             char status[128]; snprintf(status, sizeof(status), TR(S_DUP_FMT), hit->second.size());
 
                             char hlFlag[8] = "0";
-                            HANDLE hFile = CreateFileA(hit->second[k].fullPath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
-                            if (hFile != INVALID_HANDLE_VALUE) {
-                                BY_HANDLE_FILE_INFORMATION fi;
-                                if (GetFileInformationByHandle(hFile, &fi)) {
-                                    if (fi.nNumberOfLinks > 1) strcpy(hlFlag, "1");
-                                }
-                                CloseHandle(hFile);
-                            }
+                            if (linksOf[k] > 1) strcpy(hlFlag, "1"); // v1.3: 复用上面记录的链接数，不再重开文件
 
-                            AddListItem(g_hHardlinkList, hit->second[k].fullPath.c_str(), status, szSaved, hit->first.c_str(), hlFlag, hit->second[k].attr, hit->second[k].fullPath.c_str());
+                            AddListItem(g_hHardlinkList, fn.fullPath.c_str(), status, szSaved, hit->first.c_str(), hlFlag, fn.attr, fn.fullPath.c_str());
                         }
                     }
                 }
@@ -1273,7 +1387,7 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
         }
     }
 
-    g_StatElapsedMs = GetTickCount() - dwAnalyzeStart;
+    g_StatElapsedMs = (DWORD)(NowTick64() - dwAnalyzeStart);
 
     g_CurrentSortList = g_hHardlinkList;
     g_CurrentSortColumn = g_SortColRight;
@@ -1283,7 +1397,27 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
     return 0;
 }
 
+// v1.3: 建软连接。Vista+ 才有此 API，动态加载保证 XP 上安全返回失败
+static BOOL CreateSymbolicLinkSmart(const char* linkPath, const char* targetPath) {
+    typedef BOOLEAN (WINAPI *CSL_T)(const char*, const char*, DWORD);
+    static CSL_T pCsl = NULL;
+    static BOOL s_looked = FALSE;
+    if (!s_looked) {
+        s_looked = TRUE;
+        pCsl = (CSL_T)GetProcAddress(GetModuleHandleA("kernel32.dll"), "CreateSymbolicLinkA");
+    }
+    if (!pCsl) return FALSE;
+    if (pCsl(linkPath, targetPath, 0)) return TRUE;
+    DWORD err = GetLastError();
+    if (err == ERROR_INVALID_FUNCTION || err == ERROR_PRIVILEGE_NOT_HELD) {
+        // Win10 1703+ 开发者模式可免提权创建
+        if (pCsl(linkPath, targetPath, SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE)) return TRUE;
+    }
+    return FALSE;
+}
+
 unsigned __stdcall CreateHardlinksThread(void* pArguments) {
+    g_nAclFixed = 0; // v1.3: 本轮转换的接管计数清零
     int count = (int)SendMessageA(g_hHardlinkList, LVM_GETITEMCOUNT, 0, 0);
     int checkedCount = 0;
 
@@ -1325,23 +1459,147 @@ unsigned __stdcall CreateHardlinksThread(void* pArguments) {
                 }
 
                 std::string targetBak = target + ".hlbak";
-
-                if (MoveFileA(target.c_str(), targetBak.c_str())) {
-                    if (CreateHardLinkA(target.c_str(), master.c_str(), NULL)) {
-                        DeleteFileA(targetBak.c_str());
-                        successCount++;
-                    }
-                    else {
-                        MoveFileA(targetBak.c_str(), target.c_str());
-                        failCount++;
+                BOOL moved = MoveFileA(target.c_str(), targetBak.c_str());
+                AclRestore stF, stD; // v1.3: ACL 兜底——文件本身不行再接管父目录
+                BOOL grantedFile = FALSE, grantedDir = FALSE;
+                if (!moved) {
+                    char dir[2048]; lstrcpynA(dir, target.c_str(), (int)sizeof(dir));
+                    char* slash = strrchr(dir, '\\');
+                    if (slash) {
+                        grantedFile = AclGrantAccess(target.c_str(), FALSE, &stF);
+                        if (grantedFile) moved = MoveFileA(target.c_str(), targetBak.c_str());
+                        if (!moved) {
+                            if (slash == dir + 2) slash[1] = 0; else *slash = 0;
+                            grantedDir = AclGrantAccess(dir, TRUE, &stD);
+                            if (grantedDir) moved = MoveFileA(target.c_str(), targetBak.c_str());
+                        }
                     }
                 }
-                else failCount++;
+                if (!moved) {
+                    failCount++;
+                    AclRestoreAccess(&stF);
+                    AclRestoreAccess(&stD);
+                    continue;
+                }
+
+                BOOL linked = FALSE;
+                if (g_bSlinkMode) linked = CreateSymbolicLinkSmart(target.c_str(), master.c_str()); // v1.3: 软连接模式
+                else linked = CreateHardLinkA(target.c_str(), master.c_str(), NULL);
+
+                if (linked) {
+                    DeleteFileA(targetBak.c_str());
+                    successCount++;
+                    // 原文件对象已被删除，接管状态不还原（还原会错落在新建的链接上）
+                }
+                else {
+                    MoveFileA(targetBak.c_str(), target.c_str());
+                    failCount++;
+                    AclRestoreAccess(&stF); // 已移回，原对象还在，还原
+                    AclRestoreAccess(&stD);
+                }
             }
         }
     }
     PostMessage(g_hMainWnd, WM_USER_CREATE_DONE, (WPARAM)successCount, (LPARAM)failCount);
     return 0;
+}
+
+// ===================== v1.3：ACL 权限兜底（不同所有者/权限的文件也能处理）=====================
+// 思路：开启 SeTakeOwnership/SeRestore/SeBackup 特权 → 临时把文件所有者接管为 Administrators
+// 并补一条完全控制 ACE → 操作完成后按需还原原所有者与原 DACL。即时生效、用完即还。
+
+static void EnableAclPrivileges() {
+    static BOOL s_done = FALSE;
+    if (s_done) return;
+    s_done = TRUE;
+    const char* privs[] = { SE_TAKE_OWNERSHIP_NAME, SE_RESTORE_NAME, SE_BACKUP_NAME, SE_SECURITY_NAME, NULL };
+    for (int i = 0; privs[i]; i++) {
+        HANDLE tok = NULL;
+        if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &tok)) {
+            TOKEN_PRIVILEGES tp; LUID luid;
+            if (LookupPrivilegeValueA(NULL, privs[i], &luid)) {
+                tp.PrivilegeCount = 1;
+                tp.Privileges[0].Luid = luid;
+                tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+                AdjustTokenPrivileges(tok, FALSE, &tp, 0, NULL, NULL);
+            }
+            CloseHandle(tok);
+        }
+    }
+}
+
+// 接管所有权并追加 Administrators 完全控制 ACE；原安全描述符备份进 st 供还原
+static BOOL AclGrantAccess(const char* path, BOOL isDir, AclRestore* st) {
+    memset(st, 0, sizeof(AclRestore));
+    lstrcpynA(st->path, path, (int)sizeof(st->path));
+    EnableAclPrivileges();
+    DWORD r = GetNamedSecurityInfoA(st->path, SE_FILE_OBJECT,
+        OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+        &st->owner, &st->group, &st->dacl, &st->sacl, &st->sd);
+    if (r != ERROR_SUCCESS) return FALSE;
+
+    SID_IDENTIFIER_AUTHORITY ntAuth = SECURITY_NT_AUTHORITY;
+    PSID adminSid = NULL;
+    if (!AllocateAndInitializeSid(&ntAuth, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS,
+                                  0, 0, 0, 0, 0, 0, &adminSid))
+        return FALSE;
+
+    BOOL ok = (SetNamedSecurityInfoA(st->path, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION,
+                                     adminSid, NULL, NULL, NULL) == ERROR_SUCCESS);
+    if (ok) {
+        EXPLICIT_ACCESSA ea;
+        memset(&ea, 0, sizeof(ea));
+        ea.grfAccessPermissions = GENERIC_ALL;
+        ea.grfAccessMode = GRANT_ACCESS;
+        ea.grfInheritance = isDir ? SUB_CONTAINERS_AND_OBJECTS_INHERIT : NO_INHERITANCE;
+        BuildTrusteeWithSidA(&ea.Trustee, adminSid);
+        PACL newDacl = NULL;
+        if (SetEntriesInAclA(1, &ea, st->dacl, &newDacl) == ERROR_SUCCESS) {
+            if (SetNamedSecurityInfoA(st->path, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+                                      NULL, NULL, newDacl, NULL) != ERROR_SUCCESS)
+                ok = FALSE;
+            LocalFree(newDacl);
+        }
+        else ok = FALSE;
+    }
+    FreeSid(adminSid);
+    if (ok) {
+        st->active = TRUE;
+        InterlockedIncrement(&g_nAclFixed);
+    }
+    else if (st->sd) {
+        LocalFree(st->sd);
+        st->sd = NULL;
+    }
+    return ok;
+}
+
+// 还原原所有者/DACL。路径上的对象可能已被替换或删除（转换流程），只在还存在时还原
+static void AclRestoreAccess(AclRestore* st) {
+    if (!st->active) {
+        if (st->sd) { LocalFree(st->sd); st->sd = NULL; }
+        return;
+    }
+    st->active = FALSE;
+    if (GetFileAttributesA(st->path) != INVALID_FILE_ATTRIBUTES) {
+        SetNamedSecurityInfoA(st->path, SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            st->owner, st->group, st->dacl, st->sacl);
+    }
+    if (st->sd) { LocalFree(st->sd); st->sd = NULL; }
+}
+
+// 普通方式打开失败时走接管兜底；成功后调用方必须在 CloseHandle 后 AclRestoreAccess
+static HANDLE OpenFileExAcl(const char* path, DWORD access, DWORD share, DWORD flags, AclRestore* st) {
+    memset(st, 0, sizeof(AclRestore));
+    HANDLE h = CreateFileA(path, access, share, NULL, OPEN_EXISTING, flags, NULL);
+    if (h != INVALID_HANDLE_VALUE) return h;
+    DWORD attr = GetFileAttributesA(path);
+    if (attr == INVALID_FILE_ATTRIBUTES) return INVALID_HANDLE_VALUE;
+    if (!AclGrantAccess(path, (attr & FILE_ATTRIBUTE_DIRECTORY) != 0, st)) return INVALID_HANDLE_VALUE;
+    h = CreateFileA(path, access, share, NULL, OPEN_EXISTING, flags, NULL);
+    if (h == INVALID_HANDLE_VALUE) AclRestoreAccess(st);
+    return h;
 }
 
 BOOL IsRiskyExt(const char* path) {
@@ -1378,9 +1636,22 @@ BOOL IsProtectedPath(const char* path) {
 
 BOOL BreakHardlink(const char* filepath) {
     char tempPath[2048]; snprintf(tempPath, sizeof(tempPath), "%s.tmp_hl_bak", filepath);
-    if (!CopyFileA(filepath, tempPath, FALSE)) return FALSE;
-    if (!DeleteFileA(filepath)) { DeleteFileA(tempPath); return FALSE; }
-    return MoveFileA(tempPath, filepath);
+    AclRestore st; // v1.3: ACL 兜底
+    memset(&st, 0, sizeof(st));
+    BOOL granted = FALSE;
+    if (!CopyFileA(filepath, tempPath, FALSE)) {
+        granted = AclGrantAccess(filepath, FALSE, &st);
+        if (!granted || !CopyFileA(filepath, tempPath, FALSE)) {
+            AclRestoreAccess(&st);
+            return FALSE;
+        }
+    }
+    if (!DeleteFileA(filepath)) { // 原对象还在，可还原
+        DeleteFileA(tempPath);
+        AclRestoreAccess(&st);
+        return FALSE;
+    }
+    return MoveFileA(tempPath, filepath); // 原对象已删，接管状态随对象消失，不还原
 }
 
 void CopyToClipboard(HWND hwnd, const char* text) {
@@ -1588,7 +1859,7 @@ void ApplyLanguageToUI() {
     if (!g_bScanning) { // 任务进行中保持「停止」语义，避免状态错乱
         SetWindowTextA(g_hBtnRefresh, TR(S_BTN_REFRESH));
         SetWindowTextA(g_hBtnAnalyze, TR(S_BTN_ANALYZE));
-        SetWindowTextA(g_hBtnCreate, TR(S_BTN_CREATE));
+        SetWindowTextA(g_hBtnCreate, g_bSlinkMode ? TR(S_BTN_CREATE_SL) : TR(S_BTN_CREATE)); // v1.3
         SetWindowTextA(g_hBtnRestore, TR(S_BTN_RESTORE));
     }
 
@@ -1877,7 +2148,7 @@ void CreateControls(HWND hwnd) {
     g_hBtnInvSelR = CreateWindowExA(0, "BUTTON", TR(S_BTN_INVSEL), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(510), DPIScale(110), DPIScale(60), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_INVSEL_R, g_hInst, NULL);
     g_hBtnExportR = CreateWindowExA(0, "BUTTON", TR(S_BTN_EXPORT), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(580), DPIScale(110), DPIScale(90), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_EXPORT_R, g_hInst, NULL);
 
-    g_hFileList = CreateWindowExA(WS_EX_CLIENTEDGE, WC_LISTVIEWA, "", WS_VISIBLE | WS_CHILD | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SINGLESEL, DPIScale(10), DPIScale(140), DPIScale(420), DPIScale(420), hwnd, (HMENU)(INT_PTR)ID_LIST_FILE, g_hInst, NULL);
+    g_hFileList = CreateWindowExA(WS_EX_CLIENTEDGE, WC_LISTVIEWA, "", WS_VISIBLE | WS_CHILD | LVS_REPORT | LVS_SHOWSELALWAYS, DPIScale(10), DPIScale(140), DPIScale(420), DPIScale(420), hwnd, (HMENU)(INT_PTR)ID_LIST_FILE, g_hInst, NULL);
     LVCOLUMNA lvc = { 0 }; lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
     lvc.cx = DPIScale(170); lvc.pszText = (LPSTR)TR(S_COL_NAME); SendMessageA(g_hFileList, LVM_INSERTCOLUMNA, 0, (LPARAM)&lvc);
     lvc.cx = DPIScale(80);  lvc.pszText = (LPSTR)TR(S_COL_SIZE);       SendMessageA(g_hFileList, LVM_INSERTCOLUMNA, 1, (LPARAM)&lvc);
@@ -1885,7 +2156,7 @@ void CreateControls(HWND hwnd) {
     lvc.cx = DPIScale(60);  lvc.pszText = (LPSTR)TR(S_COL_HL);     SendMessageA(g_hFileList, LVM_INSERTCOLUMNA, 3, (LPARAM)&lvc);
     SendMessageA(g_hFileList, LVM_SETEXTENDEDLISTVIEWSTYLE, 0, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_CHECKBOXES);
 
-    g_hHardlinkList = CreateWindowExA(WS_EX_CLIENTEDGE, WC_LISTVIEWA, "", WS_VISIBLE | WS_CHILD | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SINGLESEL, DPIScale(440), DPIScale(140), DPIScale(530), DPIScale(420), hwnd, (HMENU)(INT_PTR)ID_LIST_HARDLINK, g_hInst, NULL);
+    g_hHardlinkList = CreateWindowExA(WS_EX_CLIENTEDGE, WC_LISTVIEWA, "", WS_VISIBLE | WS_CHILD | LVS_REPORT | LVS_SHOWSELALWAYS, DPIScale(440), DPIScale(140), DPIScale(530), DPIScale(420), hwnd, (HMENU)(INT_PTR)ID_LIST_HARDLINK, g_hInst, NULL);
     lvc.cx = DPIScale(170); lvc.pszText = (LPSTR)TR(S_COL_DUP); SendMessageA(g_hHardlinkList, LVM_INSERTCOLUMNA, 0, (LPARAM)&lvc);
     lvc.cx = DPIScale(80);  lvc.pszText = (LPSTR)TR(S_COL_STATUSINFO); SendMessageA(g_hHardlinkList, LVM_INSERTCOLUMNA, 1, (LPARAM)&lvc);
     lvc.cx = DPIScale(90);  lvc.pszText = (LPSTR)TR(S_COL_SIZESAVE); SendMessageA(g_hHardlinkList, LVM_INSERTCOLUMNA, 2, (LPARAM)&lvc);
@@ -1901,6 +2172,9 @@ void CreateControls(HWND hwnd) {
     g_hBtnDelDup = CreateWindowExA(0, "BUTTON", TR(S_BTN_DELDUP), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(570), DPIScale(580), DPIScale(140), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_DELETE_DUPS, g_hInst, NULL);
     g_hBtnLang = CreateWindowExA(0, "BUTTON", TR(S_BTN_LANG), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(150), DPIScale(110), DPIScale(76), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_LANG, g_hInst, NULL);
     g_hBtnTheme = CreateWindowExA(0, "BUTTON", TR(S_BTN_THEME), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(230), DPIScale(110), DPIScale(76), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_THEME, g_hInst, NULL);
+
+    // v1.3: 软连接模式开关（勾选后「一键创建」改为建软连接）
+    g_hChkSlink = CreateWindowExA(0, "BUTTON", TR(S_CHK_SLINK), WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, DPIScale(720), DPIScale(583), DPIScale(130), DPIScale(30), hwnd, (HMENU)(INT_PTR)ID_CHK_SLINK, g_hInst, NULL);
 
     int btnY = 580;
     g_hBtnRefresh = CreateWindowExA(0, "BUTTON", TR(S_BTN_REFRESH), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(10), DPIScale(btnY), DPIScale(120), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_REFRESH, g_hInst, NULL);
@@ -1926,5 +2200,6 @@ void CreateControls(HWND hwnd) {
     SetDefaultFont(g_hBtnRefresh); SetDefaultFont(g_hBtnAnalyze); SetDefaultFont(g_hBtnCreate); SetDefaultFont(g_hBtnRestore);
     SetDefaultFont(g_hBtnAbout);
     SetDefaultFont(g_hBtnDelDup); SetDefaultFont(g_hBtnLang); SetDefaultFont(g_hBtnTheme);
+    SetDefaultFont(g_hChkSlink); // v1.3
     ApplyTheme(); // v1.2 初始主题
 }
