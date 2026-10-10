@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity type="win32" name="Henglie.ElegantHLK" version="1.4.0.0" processorArchitecture="*"/>
+  <assemblyIdentity type="win32" name="Henglie.ElegantHLK" version="1.5.0.0" processorArchitecture="*"/>
   <!-- v1.4 起程序全部改用宽字符（W）Win32 API，界面字符串为 UTF-16，
        与系统 ANSI 代码页无关，无需再声明 activeCodePage，
        开启「Beta: 使用 Unicode UTF-8 提供全球语言支持」也不会乱码。 -->

@@ -91,6 +91,7 @@
 #define ID_BTN_LANG          1023
 #define ID_BTN_THEME         1024
 #define ID_CHK_SLINK         1025
+#define ID_BTN_FONT          1026 // v1.5
 
 #define IDM_COPY_FILENAME    2001
 #define IDM_COPY_PATH        2002
@@ -99,12 +100,17 @@
 #define IDM_OPEN_EXPLORER    2005
 #define IDM_CREATE_HLINK_CTX 2006
 #define IDM_DELETE           2007
+#define IDM_OPEN_GROUP       2008 // v1.5
 #define IDM_LANG_AUTO        3001
 #define IDM_LANG_ZH          3002
 #define IDM_LANG_EN          3003
 #define IDM_THEME_AUTO       3011
 #define IDM_THEME_LIGHT      3012
 #define IDM_THEME_DARK       3013
+#define IDM_FONT_S           3021 // v1.5
+#define IDM_FONT_M           3022
+#define IDM_FONT_L           3023
+#define IDM_FONT_XL          3024
 
 #define WM_USER_SCAN_DONE       (WM_USER + 100)
 #define WM_USER_ANALYZE_DONE    (WM_USER + 101)
@@ -123,6 +129,11 @@ HWND g_hChkSlink;               // v1.3: 软连接模式复选框
 BOOL g_bSlinkMode = FALSE;      // v1.3: TRUE = 一键转换时建软连接
 int g_AnchorL = -1, g_AnchorR = -1; // v1.3: Shift 范围勾选的锚点行
 volatile LONG g_nAclFixed = 0;  // v1.3: 本轮 ACL 权限接管成功次数
+int g_FontPt = 11;             // v1.5: UI 字号（磅），注册表可存
+int g_SplitX = 0;              // v1.5: 左右列表分栏线客户区 x（0=未初始化）
+int g_SplitPermille = 500;     // v1.5: 分栏比例（千分比，按可用宽度）
+BOOL g_bDragSplit = FALSE;     // v1.5: 正在拖拽分栏
+HWND g_hBtnFont;               // v1.5: 字号按钮
 wchar_t g_szScanFile[2048] = L"";
 volatile int g_nScanCounter = 0;
 
@@ -196,12 +207,13 @@ enum StrId {
     S_TXT_TITLE, S_TXT_GROUP, S_TXT_KEEP, S_TXT_DUP, S_TXT_HINT,
     S_MENU_FOLLOW, S_MENU_LIGHT, S_MENU_DARK,
     S_CHK_SLINK, S_BTN_CREATE_SL, S_MSG_CONFIRM_ALL_SL, S_MSG_CONFIRM_SEL_SL,
-    S_MSG_CREATE_DONE_SL, S_MSG_SL_FAIL_HINT, S_MSG_SL_NO_SUPPORT, S_ACL_COUNT_FMT,
+    S_MSG_CREATE_DONE_SL, S_MSG_SL_FAIL_HINT, S_MSG_SL_NO_SUPPORT,     S_ACL_COUNT_FMT,
+    S_BTN_FONT, S_FONT_S, S_FONT_M, S_FONT_L, S_FONT_XL, S_CTX_OPEN_GROUP, // v1.5
     S__COUNT
 };
 
 static const wchar_t* const STR_TBL[S__COUNT][2] = {
-    { L"优雅硬链接 V1.4", L"ElegantHLK V1.4" },                                       // S_TITLE
+    { L"优雅硬链接 V1.5", L"ElegantHLK V1.5" },                                       // S_TITLE
     { L"磁盘:", L"Disk:" },                                                           // S_DISK
     { L"地址:", L"Path:" },                                                           // S_ADDR
     { L"类型:", L"Type:" },                                                           // S_TYPE
@@ -322,6 +334,12 @@ static const wchar_t* const STR_TBL[S__COUNT][2] = {
     { L"部分软连接创建失败，常见原因：当前账户没有 SeCreateSymbolicLink 权限。\n解决办法：右键「以管理员身份运行」本程序；或在 Win10 创意者更新及以上系统开启「开发者模式」。", L"Some symlinks failed. Common cause: the current account lacks the SeCreateSymbolicLink privilege.\nFix: run this program as administrator, or enable Developer Mode on Windows 10 (1703+)." }, // S_MSG_SL_FAIL_HINT
     { L"当前系统不支持创建软连接（需要 Windows Vista 及以上）。", L"This system cannot create symbolic links (Windows Vista or later required)." }, // S_MSG_SL_NO_SUPPORT
     { L"(其中通过权限接管访问: %zu 个)", L"(accessed via ownership takeover: %zu)" }, // S_ACL_COUNT_FMT
+    { L"字号", L"Size" },                                           // S_BTN_FONT
+    { L"小（10 号字）", L"Small (10pt)" },                          // S_FONT_S
+    { L"标准（11 号字）", L"Standard (11pt)" },                     // S_FONT_M
+    { L"大（12 号字）", L"Large (12pt)" },                          // S_FONT_L
+    { L"特大（14 号字）", L"Extra (14pt)" },                        // S_FONT_XL
+    { L"打开本组所有文件位置", L"Open all locations in this group" }, // S_CTX_OPEN_GROUP
 };
 
 int g_LangMode = 0; // 0=跟随系统 1=中文 2=English
@@ -365,6 +383,8 @@ DWORD RegGetDword(const wchar_t* name, DWORD defVal);
 void RegSetDword(const wchar_t* name, DWORD val);
 void DrawThemedButton(LPDRAWITEMSTRUCT dis);
 void DrawThemedMenuItem(LPDRAWITEMSTRUCT dis);
+void ApplyFontToUI(); // v1.5
+void OpenGroupLocations(HWND hwnd, int iItem); // v1.5
 // v1.3: ACL 权限兜底（issue：即便提权，仍有属主/DACL 拒绝访问的文件）
 typedef struct {
     wchar_t path[2048];
@@ -639,22 +659,32 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         MoveWindow(g_hTxtSizeTo, cx - DPIScale(210), DPIScale(65), DPIScale(20), DPIScale(20), TRUE);
         MoveWindow(g_hEditSizeMax, cx - DPIScale(180), DPIScale(62), DPIScale(60), DPIScale(24), TRUE);
 
-        // 选择按钮栏和列表区域计算
-        int listW = (cx - DPIScale(30)) / 2;
+        // v1.5: 选择按钮栏和列表区域计算（左右分栏可拖拽）
+        if (g_SplitX <= 0)
+            g_SplitX = DPIScale(10) + ((cx - DPIScale(30)) * g_SplitPermille) / 1000;
+        int minSplit = DPIScale(212);
+        int maxSplit = cx - DPIScale(464);
+        if (maxSplit < minSplit) maxSplit = minSplit;
+        if (g_SplitX < minSplit) g_SplitX = minSplit;
+        if (g_SplitX > maxSplit) g_SplitX = maxSplit;
+        int listW = g_SplitX - DPIScale(12);  // 左列表宽（x 从 10 起，分隔槽右侧留空）
+        int rightX = g_SplitX + DPIScale(4);  // 右列表起点
+        int rightW = cx - rightX - DPIScale(10);
         int listY = DPIScale(140);
         int listHeight = cy - listY - DPIScale(100);
         if (listHeight < DPIScale(100)) listHeight = DPIScale(100);
 
         MoveWindow(g_hBtnSelAllL, DPIScale(10), DPIScale(110), DPIScale(60), DPIScale(25), TRUE);
         MoveWindow(g_hBtnInvSelL, DPIScale(80), DPIScale(110), DPIScale(60), DPIScale(25), TRUE);
-        MoveWindow(g_hBtnSelAllR, DPIScale(20) + listW, DPIScale(110), DPIScale(60), DPIScale(25), TRUE);
-        MoveWindow(g_hBtnInvSelR, DPIScale(90) + listW, DPIScale(110), DPIScale(60), DPIScale(25), TRUE);
-        MoveWindow(g_hBtnExportR, DPIScale(160) + listW, DPIScale(110), DPIScale(90), DPIScale(25), TRUE);
-        MoveWindow(g_hBtnLang, DPIScale(252) + listW, DPIScale(110), DPIScale(76), DPIScale(25), TRUE);
-        MoveWindow(g_hBtnTheme, DPIScale(332) + listW, DPIScale(110), DPIScale(76), DPIScale(25), TRUE);
+        MoveWindow(g_hBtnSelAllR, rightX, DPIScale(110), DPIScale(60), DPIScale(25), TRUE);
+        MoveWindow(g_hBtnInvSelR, rightX + DPIScale(70), DPIScale(110), DPIScale(60), DPIScale(25), TRUE);
+        MoveWindow(g_hBtnExportR, rightX + DPIScale(140), DPIScale(110), DPIScale(90), DPIScale(25), TRUE);
+        MoveWindow(g_hBtnLang, rightX + DPIScale(232), DPIScale(110), DPIScale(76), DPIScale(25), TRUE);
+        MoveWindow(g_hBtnTheme, rightX + DPIScale(312), DPIScale(110), DPIScale(76), DPIScale(25), TRUE);
+        MoveWindow(g_hBtnFont, rightX + DPIScale(388), DPIScale(110), DPIScale(56), DPIScale(25), TRUE);
 
         MoveWindow(g_hFileList, DPIScale(10), listY, listW, listHeight, TRUE);
-        MoveWindow(g_hHardlinkList, DPIScale(20) + listW, listY, listW, listHeight, TRUE);
+        MoveWindow(g_hHardlinkList, rightX, listY, rightW, listHeight, TRUE);
 
         // 底部按钮栏
         int btnY = cy - DPIScale(85);
@@ -709,6 +739,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                     SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_BTN_REFRESH, BN_CLICKED), 0);
                 }
             }
+        }
+        // v1.5: 点击复选框的行保持/叠加选中高亮，勾过的行不再"点完就褪色"
+        if ((lpnmh->idFrom == ID_LIST_FILE || lpnmh->idFrom == ID_LIST_HARDLINK) && lpnmh->code == NM_CLICK) {
+            LPNMITEMACTIVATE pnma = (LPNMITEMACTIVATE)lParam;
+            LVHITTESTINFO hti = { 0 };
+            hti.pt = pnma->ptAction;
+            if (pnma->iItem >= 0 && ListView_SubItemHitTest(pnma->hdr.hwndFrom, &hti) >= 0 && (hti.flags & LVHT_ONITEMSTATEICON))
+                ListView_SetItemState(pnma->hdr.hwndFrom, pnma->iItem, LVIS_SELECTED, LVIS_SELECTED);
+        }
+        // v1.5: 右侧列表双击 = 打开该重复组所有文件所在位置
+        if (lpnmh->idFrom == ID_LIST_HARDLINK && lpnmh->code == NM_DBLCLK) {
+            LPNMITEMACTIVATE pnmd = (LPNMITEMACTIVATE)lParam;
+            if (pnmd->iItem >= 0) OpenGroupLocations(hwnd, pnmd->iItem);
         }
         if ((lpnmh->idFrom == ID_LIST_FILE || lpnmh->idFrom == ID_LIST_HARDLINK) && lpnmh->code == LVN_COLUMNCLICK) {
             LPNMLISTVIEW pnmv = (LPNMLISTVIEW)lParam;
@@ -1016,6 +1059,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 g_bSlinkMode = (SendMessage(g_hChkSlink, BM_GETCHECK, 0, 0) == BST_CHECKED);
                 SetWindowText(g_hBtnCreate, g_bSlinkMode ? TR(S_BTN_CREATE_SL) : TR(S_BTN_CREATE));
                 break;
+            case ID_BTN_FONT: { // v1.5: 字号选择菜单
+                HMENU hFontMenu = CreatePopupMenu();
+                AppendThemedItem(hFontMenu, IDM_FONT_S, TR(S_FONT_S));
+                AppendThemedItem(hFontMenu, IDM_FONT_M, TR(S_FONT_M));
+                AppendThemedItem(hFontMenu, IDM_FONT_L, TR(S_FONT_L));
+                AppendThemedItem(hFontMenu, IDM_FONT_XL, TR(S_FONT_XL));
+                static const int s_ptOpts[4] = { 10, 11, 12, 14 };
+                int curIdx = 1;
+                for (int i = 0; i < 4; i++) if (s_ptOpts[i] == g_FontPt) curIdx = i;
+                CheckMenuRadioItem(hFontMenu, IDM_FONT_S, IDM_FONT_XL, IDM_FONT_S + curIdx, MF_BYCOMMAND);
+                RECT brc; GetWindowRect(g_hBtnFont, &brc);
+                TrackPopupMenu(hFontMenu, TPM_LEFTALIGN | TPM_TOPALIGN, brc.left, brc.bottom, 0, hwnd, NULL);
+                DestroyMenu(hFontMenu);
+                break;
+            }
             }
         }
 
@@ -1042,6 +1100,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 RegSetDword(L"Theme", (DWORD)g_ThemeMode);
                 ApplyTheme();
                 break;
+            case IDM_OPEN_GROUP: // v1.5: 打开本组所有文件位置
+                if (isHardlinkList && selIdx != -1) OpenGroupLocations(hwnd, selIdx);
+                break;
+            case IDM_FONT_S: case IDM_FONT_M: case IDM_FONT_L: case IDM_FONT_XL: { // v1.5: 字号
+                static const int s_ptVals[4] = { 10, 11, 12, 14 };
+                int fIdx = (int)(LOWORD(wParam)) - IDM_FONT_S;
+                if (fIdx >= 0 && fIdx < 4) {
+                    g_FontPt = s_ptVals[fIdx];
+                    RegSetDword(L"FontSize", (DWORD)g_FontPt);
+                    ApplyFontToUI();
+                }
+                break;
+            }
             case IDM_COPY_FILENAME: {
                 const wchar_t* baseName = wcsrchr(selText, '\\');
                 CopyToClipboard(hwnd, baseName ? baseName + 1 : selText);
@@ -1182,6 +1253,56 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         DragFinish(hDrop);
         break;
     }
+    case WM_SETCURSOR: // v1.5: 悬停分栏线变左右箭头
+        if (LOWORD(lParam) == HTCLIENT && g_SplitX > 0) {
+            POINT spt; GetCursorPos(&spt); ScreenToClient(hwnd, &spt);
+            int d = spt.x - g_SplitX; if (d < 0) d = -d;
+            if (d <= DPIScale(3)) { SetCursor(LoadCursorW(NULL, (LPCWSTR)IDC_SIZEWE)); return TRUE; }
+        }
+        return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+
+    case WM_LBUTTONDOWN: // v1.5: 命中分栏线开始拖拽
+        if (g_SplitX > 0) {
+            int d = (int)(short)LOWORD(lParam) - g_SplitX; if (d < 0) d = -d;
+            if (d <= DPIScale(3)) { g_bDragSplit = TRUE; SetCapture(hwnd); }
+        }
+        break;
+
+    case WM_MOUSEMOVE: // v1.5: 拖拽中实时重排
+        if (g_bDragSplit && GetCapture() == hwnd) {
+            RECT crc; GetClientRect(hwnd, &crc);
+            g_SplitX = (int)(short)LOWORD(lParam);
+            SendMessage(hwnd, WM_SIZE, SIZE_RESTORED, MAKELPARAM(crc.right, crc.bottom));
+            InvalidateRect(hwnd, NULL, TRUE);
+        }
+        break;
+
+    case WM_LBUTTONUP: // v1.5: 结束拖拽并记住分栏比例
+        if (g_bDragSplit) {
+            g_bDragSplit = FALSE;
+            if (GetCapture() == hwnd) ReleaseCapture();
+            RECT crc; GetClientRect(hwnd, &crc);
+            int span = crc.right - DPIScale(30);
+            if (span > 0) {
+                g_SplitPermille = (int)(((g_SplitX - DPIScale(10)) * 1000LL) / span);
+                if (g_SplitPermille < 200) g_SplitPermille = 200;
+                if (g_SplitPermille > 800) g_SplitPermille = 800;
+                RegSetDword(L"SplitPos", (DWORD)g_SplitPermille);
+            }
+        }
+        break;
+
+    case WM_PAINT: { // v1.5: 画分栏分隔槽
+        PAINTSTRUCT ps; HDC hdc = BeginPaint(hwnd, &ps);
+        if (g_SplitX > 0) {
+            RECT grc = { g_SplitX - DPIScale(2), ps.rcPaint.top, g_SplitX + DPIScale(2), ps.rcPaint.bottom };
+            HBRUSH hbr = CreateSolidBrush(g_bDark ? RGB(70, 70, 70) : RGB(204, 204, 204));
+            FillRect(hdc, &grc, hbr); DeleteObject(hbr);
+        }
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+
     case WM_DESTROY: PostQuitMessage(0); break;
     default: return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
@@ -1805,14 +1926,52 @@ void AddListItem(HWND hList, const wchar_t* col0, const wchar_t* col1, const wch
     if (col4) { LVITEM lviSub = { 0 }; lviSub.mask = LVIF_TEXT; lviSub.iItem = idx; lviSub.iSubItem = 4; lviSub.pszText = (LPWSTR)col4; SendMessage(hList, LVM_SETITEMTEXT, idx, (LPARAM)&lviSub); }
 }
 
-HFONT GetAppFont() { // v1.2：字体单例供自绘按钮/菜单复用
+HFONT GetAppFont() { // v1.2：字体单例；v1.5：字号可在设置中调整，变化时重建
     static HFONT s_hFont = NULL;
-    if (!s_hFont) s_hFont = CreateFont(DPIScale(15), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH | FF_SWISS, L"Microsoft YaHei");
+    static int s_pt = 0;
+    if (!s_hFont || s_pt != g_FontPt) {
+        if (s_hFont) DeleteObject(s_hFont);
+        s_hFont = CreateFontW(-DPIScale(g_FontPt), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH | FF_SWISS, L"Microsoft YaHei");
+        s_pt = g_FontPt;
+    }
     return s_hFont;
 }
 
 void SetDefaultFont(HWND hwnd) {
     SendMessage(hwnd, WM_SETFONT, (WPARAM)GetAppFont(), MAKELPARAM(TRUE, 0));
+}
+
+// v1.5: 打开该重复组（相同 SHA256）全部文件所在位置
+void OpenGroupLocations(HWND hwnd, int iItem) {
+    (void)hwnd;
+    wchar_t sha[128] = { 0 };
+    GetListViewSubItemText(g_hHardlinkList, iItem, 3, sha, 128);
+    if (!sha[0]) return;
+    int count = (int)SendMessage(g_hHardlinkList, LVM_GETITEMCOUNT, 0, 0);
+    for (int i = 0; i < count; i++) {
+        wchar_t path[2048] = { 0 }, sha2[128] = { 0 };
+        GetListViewSubItemText(g_hHardlinkList, i, 0, path, 2048);
+        GetListViewSubItemText(g_hHardlinkList, i, 3, sha2, 128);
+        if (!path[0] || wcscmp(sha2, sha) != 0) continue;
+        wchar_t param[2048 + 20];
+        swprintf(param, _countof(param), L"/select,\"%s\"", path);
+        ShellExecuteW(NULL, L"open", L"explorer.exe", param, NULL, SW_SHOWNORMAL);
+    }
+}
+
+// v1.5: 字号变更后刷新全部控件字体并重绘
+void ApplyFontToUI() {
+    GetAppFont(); // 触发按新字号重建
+    HWND ctrls[] = {
+        g_hGroupFilter, g_hTxtDisk, g_hTxtAddr, g_hTxtFilter, g_hTxtInc, g_hEditInc, g_hTxtExc, g_hEditExc,
+        g_hTxtSize, g_hEditSizeMin, g_hTxtSizeTo, g_hEditSizeMax, g_hTxtTotalSaved, g_hComboDisk, g_hEditAddress,
+        g_hComboFilter, g_hFileList, g_hHardlinkList, g_hBtnSelAllL, g_hBtnInvSelL, g_hBtnSelAllR, g_hBtnInvSelR,
+        g_hBtnExportR, g_hTxtScanInfo, g_hBtnRefresh, g_hBtnAnalyze, g_hBtnCreate, g_hBtnRestore, g_hBtnAbout,
+        g_hBtnDelDup, g_hBtnLang, g_hBtnTheme, g_hBtnFont, g_hChkSlink
+    };
+    for (int i = 0; i < (int)(sizeof(ctrls) / sizeof(ctrls[0])); i++)
+        if (ctrls[i]) SendMessage(ctrls[i], WM_SETFONT, (WPARAM)GetAppFont(), MAKELPARAM(TRUE, 0));
+    RedrawWindow(g_hMainWnd, NULL, NULL, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE | RDW_FRAME | RDW_UPDATENOW);
 }
 
 void ShowFileContextMenu(HWND hwnd, POINT pt, BOOL isHardlinkList) {
@@ -1822,6 +1981,8 @@ void ShowFileContextMenu(HWND hwnd, POINT pt, BOOL isHardlinkList) {
     if (isHardlinkList) AppendThemedItem(hMenu, IDM_COPY_SHA256, (LPCWSTR)TR(S_CTX_SHA));
     AppendThemedItem(hMenu, 0, NULL);
     AppendThemedItem(hMenu, IDM_OPEN_EXPLORER, (LPCWSTR)TR(S_CTX_EXPLORE));
+    if (isHardlinkList) AppendThemedItem(hMenu, IDM_OPEN_GROUP, (LPCWSTR)TR(S_CTX_OPEN_GROUP)); // v1.5
+
     if (isHardlinkList) AppendThemedItem(hMenu, IDM_CREATE_HLINK_CTX, (LPCWSTR)TR(S_CTX_CREATEHL));
     AppendThemedItem(hMenu, 0, NULL);
     AppendThemedItem(hMenu, IDM_DELETE, (LPCWSTR)TR(S_CTX_DELETE));
@@ -1853,6 +2014,15 @@ void LoadSettings() {
     g_ThemeMode = (int)RegGetDword(L"Theme", 0);
     if (g_LangMode < 0 || g_LangMode > 2) g_LangMode = 0;
     if (g_ThemeMode < 0 || g_ThemeMode > 2) g_ThemeMode = 0;
+    // v1.5: 字号取合法档位最近值，分栏比例限 200~800
+    g_FontPt = (int)RegGetDword(L"FontSize", 11);
+    const int ptAllowed[4] = { 10, 11, 12, 14 };
+    int bestIdx = 0, bestDist = 1 << 30;
+    for (int i = 0; i < 4; i++) { int d = g_FontPt - ptAllowed[i]; if (d < 0) d = -d; if (d < bestDist) { bestDist = d; bestIdx = i; } }
+    g_FontPt = ptAllowed[bestIdx];
+    g_SplitPermille = (int)RegGetDword(L"SplitPos", 500);
+    if (g_SplitPermille < 200) g_SplitPermille = 200;
+    if (g_SplitPermille > 800) g_SplitPermille = 800;
 }
 
 // 解析当前生效语言：手动优先；自动模式下非中文系统一律英文
@@ -2201,7 +2371,9 @@ void CreateControls(HWND hwnd) {
     // v1.2：删除重复项（不建硬链接直接删）+ 语言 / 主题切换按钮
     g_hBtnDelDup = CreateWindowEx(0, L"BUTTON", TR(S_BTN_DELDUP), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(570), DPIScale(580), DPIScale(140), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_DELETE_DUPS, g_hInst, NULL);
     g_hBtnLang = CreateWindowEx(0, L"BUTTON", TR(S_BTN_LANG), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(150), DPIScale(110), DPIScale(76), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_LANG, g_hInst, NULL);
-    g_hBtnTheme = CreateWindowEx(0, L"BUTTON", TR(S_BTN_THEME), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(230), DPIScale(110), DPIScale(76), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_THEME, g_hInst, NULL);
+    g_hBtnTheme = CreateWindowExW(0, L"BUTTON", TR(S_BTN_THEME), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(230), DPIScale(110), DPIScale(76), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_THEME, g_hInst, NULL);
+    g_hBtnFont = CreateWindowExW(0, L"BUTTON", TR(S_BTN_FONT), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(310), DPIScale(110), DPIScale(56), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_FONT, g_hInst, NULL); // v1.5
+
 
     // v1.3: 软连接模式开关（勾选后「一键创建」改为建软连接）
     g_hChkSlink = CreateWindowEx(0, L"BUTTON", TR(S_CHK_SLINK), WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, DPIScale(720), DPIScale(583), DPIScale(130), DPIScale(30), hwnd, (HMENU)(INT_PTR)ID_CHK_SLINK, g_hInst, NULL);
@@ -2229,7 +2401,7 @@ void CreateControls(HWND hwnd) {
     SetDefaultFont(g_hBtnExportR); SetDefaultFont(g_hTxtScanInfo);
     SetDefaultFont(g_hBtnRefresh); SetDefaultFont(g_hBtnAnalyze); SetDefaultFont(g_hBtnCreate); SetDefaultFont(g_hBtnRestore);
     SetDefaultFont(g_hBtnAbout);
-    SetDefaultFont(g_hBtnDelDup); SetDefaultFont(g_hBtnLang); SetDefaultFont(g_hBtnTheme);
+    SetDefaultFont(g_hBtnDelDup); SetDefaultFont(g_hBtnLang); SetDefaultFont(g_hBtnTheme); SetDefaultFont(g_hBtnFont); // v1.5
     SetDefaultFont(g_hChkSlink); // v1.3
     ApplyTheme(); // v1.2 初始主题
 }
