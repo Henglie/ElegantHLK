@@ -88,10 +88,8 @@
 #define ID_BTN_INVSEL_R      1020
 #define ID_BTN_EXPORT_R      1021
 #define ID_BTN_DELETE_DUPS   1022
-#define ID_BTN_LANG          1023
-#define ID_BTN_THEME         1024
 #define ID_CHK_SLINK         1025
-#define ID_BTN_FONT          1026 // v1.5
+#define ID_BTN_SETTINGS      1027 // 设置按钮：语言/主题/字号统一入口
 
 #define IDM_COPY_FILENAME    2001
 #define IDM_COPY_PATH        2002
@@ -124,7 +122,7 @@ HWND g_hBtnRefresh, g_hBtnAnalyze, g_hBtnCreate, g_hBtnRestore, g_hBtnAbout;
 HWND g_hTxtTotalSaved, g_hProgressBar, g_hGroupFilter;
 HWND g_hBtnSelAllL, g_hBtnInvSelL, g_hBtnSelAllR, g_hBtnInvSelR;
 HWND g_hBtnExportR, g_hTxtScanInfo;
-HWND g_hBtnDelDup, g_hBtnLang, g_hBtnTheme; // v1.2 新增按钮
+HWND g_hBtnDelDup;            // v1.2 新增按钮
 HWND g_hChkSlink;               // v1.3: 软连接模式复选框
 BOOL g_bSlinkMode = FALSE;      // v1.3: TRUE = 一键转换时建软连接
 int g_AnchorL = -1, g_AnchorR = -1; // v1.3: Shift 范围勾选的锚点行
@@ -133,7 +131,7 @@ int g_FontPt = 11;             // v1.5: UI 字号（磅），注册表可存
 int g_SplitX = 0;              // v1.5: 左右列表分栏线客户区 x（0=未初始化）
 int g_SplitPermille = 500;     // v1.5: 分栏比例（千分比，按可用宽度）
 BOOL g_bDragSplit = FALSE;     // v1.5: 正在拖拽分栏
-HWND g_hBtnFont;               // v1.5: 字号按钮
+HWND g_hBtnSettings;          // 设置按钮（语言/主题/字号统一入口）
 wchar_t g_szScanFile[2048] = L"";
 volatile int g_nScanCounter = 0;
 
@@ -209,11 +207,12 @@ enum StrId {
     S_CHK_SLINK, S_BTN_CREATE_SL, S_MSG_CONFIRM_ALL_SL, S_MSG_CONFIRM_SEL_SL,
     S_MSG_CREATE_DONE_SL, S_MSG_SL_FAIL_HINT, S_MSG_SL_NO_SUPPORT,     S_ACL_COUNT_FMT,
     S_BTN_FONT, S_FONT_S, S_FONT_M, S_FONT_L, S_FONT_XL, S_CTX_OPEN_GROUP, // v1.5
+S_BTN_SETTINGS, // 设置
     S__COUNT
 };
 
 static const wchar_t* const STR_TBL[S__COUNT][2] = {
-    { L"优雅硬链接 V1.5", L"ElegantHLK V1.5" },                                       // S_TITLE
+    { L"优雅硬链接 V1.6", L"ElegantHLK V1.6" },                                       // S_TITLE
     { L"磁盘:", L"Disk:" },                                                           // S_DISK
     { L"地址:", L"Path:" },                                                           // S_ADDR
     { L"类型:", L"Type:" },                                                           // S_TYPE
@@ -340,6 +339,7 @@ static const wchar_t* const STR_TBL[S__COUNT][2] = {
     { L"大（12 号字）", L"Large (12pt)" },                          // S_FONT_L
     { L"特大（14 号字）", L"Extra (14pt)" },                        // S_FONT_XL
     { L"打开本组所有文件位置", L"Open all locations in this group" }, // S_CTX_OPEN_GROUP
+    { L"设置", L"Settings" },                                      // S_BTN_SETTINGS
 };
 
 int g_LangMode = 0; // 0=跟随系统 1=中文 2=English
@@ -377,6 +377,7 @@ void ApplyLanguageToUI();
 void ApplyTheme();
 BOOL SystemDarkModeEnabled();
 void AppendThemedItem(HMENU hMenu, UINT id, const wchar_t* text);
+void AppendThemedSub(HMENU hParent, HMENU hSub, const wchar_t* text);
 void DoDeleteDuplicates(HWND hwnd);
 HFONT GetAppFont();
 DWORD RegGetDword(const wchar_t* name, DWORD defVal);
@@ -663,7 +664,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         if (g_SplitX <= 0)
             g_SplitX = DPIScale(10) + ((cx - DPIScale(30)) * g_SplitPermille) / 1000;
         int minSplit = DPIScale(212);
-        int maxSplit = cx - DPIScale(464);
+        int maxSplit = cx - DPIScale(322);
         if (maxSplit < minSplit) maxSplit = minSplit;
         if (g_SplitX < minSplit) g_SplitX = minSplit;
         if (g_SplitX > maxSplit) g_SplitX = maxSplit;
@@ -679,9 +680,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         MoveWindow(g_hBtnSelAllR, rightX, DPIScale(110), DPIScale(60), DPIScale(25), TRUE);
         MoveWindow(g_hBtnInvSelR, rightX + DPIScale(70), DPIScale(110), DPIScale(60), DPIScale(25), TRUE);
         MoveWindow(g_hBtnExportR, rightX + DPIScale(140), DPIScale(110), DPIScale(90), DPIScale(25), TRUE);
-        MoveWindow(g_hBtnLang, rightX + DPIScale(232), DPIScale(110), DPIScale(76), DPIScale(25), TRUE);
-        MoveWindow(g_hBtnTheme, rightX + DPIScale(312), DPIScale(110), DPIScale(76), DPIScale(25), TRUE);
-        MoveWindow(g_hBtnFont, rightX + DPIScale(388), DPIScale(110), DPIScale(56), DPIScale(25), TRUE);
+        MoveWindow(g_hBtnSettings, rightX + DPIScale(232), DPIScale(110), DPIScale(76), DPIScale(25), TRUE);
 
         MoveWindow(g_hFileList, DPIScale(10), listY, listW, listHeight, TRUE);
         MoveWindow(g_hHardlinkList, rightX, listY, rightW, listHeight, TRUE);
@@ -1006,60 +1005,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
             case ID_BTN_EXPORT_R: ExportHardlinkList(hwnd); break;
             case ID_BTN_DELETE_DUPS: DoDeleteDuplicates(hwnd); break;
-            case ID_BTN_LANG: {
+            case ID_BTN_SETTINGS: { // 设置：语言 / 主题 / 字号 级联菜单
                 HMENU hLangMenu = CreatePopupMenu();
                 AppendThemedItem(hLangMenu, IDM_LANG_AUTO, TR(S_MENU_FOLLOW));
                 AppendThemedItem(hLangMenu, IDM_LANG_ZH, L"中文");
                 AppendThemedItem(hLangMenu, IDM_LANG_EN, L"English");
                 CheckMenuRadioItem(hLangMenu, IDM_LANG_AUTO, IDM_LANG_EN, IDM_LANG_AUTO + g_LangMode, MF_BYCOMMAND);
-                RECT brc; GetWindowRect(g_hBtnLang, &brc);
-                TrackPopupMenu(hLangMenu, TPM_LEFTALIGN | TPM_TOPALIGN, brc.left, brc.bottom, 0, hwnd, NULL);
-                DestroyMenu(hLangMenu);
-                break;
-            }
-            case ID_BTN_THEME: {
                 HMENU hThemeMenu = CreatePopupMenu();
                 AppendThemedItem(hThemeMenu, IDM_THEME_AUTO, TR(S_MENU_FOLLOW));
                 AppendThemedItem(hThemeMenu, IDM_THEME_LIGHT, TR(S_MENU_LIGHT));
                 AppendThemedItem(hThemeMenu, IDM_THEME_DARK, TR(S_MENU_DARK));
                 CheckMenuRadioItem(hThemeMenu, IDM_THEME_AUTO, IDM_THEME_DARK, IDM_THEME_AUTO + g_ThemeMode, MF_BYCOMMAND);
-                RECT brc; GetWindowRect(g_hBtnTheme, &brc);
-                TrackPopupMenu(hThemeMenu, TPM_LEFTALIGN | TPM_TOPALIGN, brc.left, brc.bottom, 0, hwnd, NULL);
-                DestroyMenu(hThemeMenu);
-                break;
-            }
-            case ID_BTN_RESTORE_SLINK: {
-                int cnt = (int)SendMessage(g_hHardlinkList, LVM_GETITEMCOUNT, 0, 0);
-                if (cnt == 0) { MessageBox(hwnd, TR(S_MSG_EMPTY_R_ANALYZE), TR(S_T_TIP), MB_OK | MB_ICONWARNING); break; }
-                int chk = 0; for (int i = 0; i < cnt; i++) if (ListView_GetCheckState(g_hHardlinkList, i)) chk++;
-                std::vector<std::wstring> targets;
-                for (int i = 0; i < cnt; i++) {
-                    if (chk > 0 && !ListView_GetCheckState(g_hHardlinkList, i)) continue;
-                    wchar_t hl[16] = { 0 }; GetListViewSubItemText(g_hHardlinkList, i, 4, hl, 16);
-                    if (hl[0] != '1') continue;
-                    wchar_t p[2048] = { 0 }; GetListViewSubItemText(g_hHardlinkList, i, 0, p, 2048);
-                    if (wcslen(p) > 0) targets.push_back(p);
-                }
-                if (targets.empty()) { MessageBox(hwnd, TR(S_MSG_NO_UNLINK), TR(S_T_TIP), MB_OK | MB_ICONINFORMATION); break; }
-                wchar_t ask[256]; swprintf(ask, _countof(ask), TR(S_MSG_UNLINK_ASK), targets.size());
-                if (MessageBox(hwnd, ask, TR(S_T_UNLINK), MB_YESNO | MB_ICONQUESTION) != IDYES) break;
-                size_t okN = 0, failN = 0;
-                for (size_t i = 0; i < targets.size(); i++) {
-                    if (BreakHardlink(targets[i].c_str())) okN++; else failN++;
-                }
-                wchar_t done[256]; swprintf(done, _countof(done), TR(S_MSG_UNLINK_DONE), okN, failN);
-                MessageBox(hwnd, done, TR(S_T_DONE), MB_OK | MB_ICONINFORMATION);
-                SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_BTN_REFRESH, BN_CLICKED), 0);
-                break;
-            }
-            case ID_BTN_ABOUT:
-                MessageBox(hwnd, TR(S_MSG_ABOUT), TR(S_BTN_ABOUT), MB_OK | MB_ICONINFORMATION);
-                break;
-            case ID_CHK_SLINK: // v1.3: 软连接模式开关，转换按钮文字跟着切
-                g_bSlinkMode = (SendMessage(g_hChkSlink, BM_GETCHECK, 0, 0) == BST_CHECKED);
-                SetWindowText(g_hBtnCreate, g_bSlinkMode ? TR(S_BTN_CREATE_SL) : TR(S_BTN_CREATE));
-                break;
-            case ID_BTN_FONT: { // v1.5: 字号选择菜单
                 HMENU hFontMenu = CreatePopupMenu();
                 AppendThemedItem(hFontMenu, IDM_FONT_S, TR(S_FONT_S));
                 AppendThemedItem(hFontMenu, IDM_FONT_M, TR(S_FONT_M));
@@ -1069,9 +1025,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 int curIdx = 1;
                 for (int i = 0; i < 4; i++) if (s_ptOpts[i] == g_FontPt) curIdx = i;
                 CheckMenuRadioItem(hFontMenu, IDM_FONT_S, IDM_FONT_XL, IDM_FONT_S + curIdx, MF_BYCOMMAND);
-                RECT brc; GetWindowRect(g_hBtnFont, &brc);
-                TrackPopupMenu(hFontMenu, TPM_LEFTALIGN | TPM_TOPALIGN, brc.left, brc.bottom, 0, hwnd, NULL);
-                DestroyMenu(hFontMenu);
+                HMENU hSettings = CreatePopupMenu();
+                AppendThemedSub(hSettings, hLangMenu, TR(S_BTN_LANG));
+                AppendThemedSub(hSettings, hThemeMenu, TR(S_BTN_THEME));
+                AppendThemedSub(hSettings, hFontMenu, TR(S_BTN_FONT));
+                RECT brc; GetWindowRect(g_hBtnSettings, &brc);
+                TrackPopupMenu(hSettings, TPM_LEFTALIGN | TPM_TOPALIGN, brc.left, brc.bottom, 0, hwnd, NULL);
+                DestroyMenu(hSettings);
                 break;
             }
             }
@@ -1253,18 +1213,27 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         DragFinish(hDrop);
         break;
     }
-    case WM_SETCURSOR: // v1.5: 悬停分栏线变左右箭头
+    case WM_SETCURSOR: // 悬停分栏线变左右箭头（严格限定在左右列表的高度范围内，不影响上方编辑框等控件）
         if (LOWORD(lParam) == HTCLIENT && g_SplitX > 0) {
             POINT spt; GetCursorPos(&spt); ScreenToClient(hwnd, &spt);
-            int d = spt.x - g_SplitX; if (d < 0) d = -d;
-            if (d <= DPIScale(3)) { SetCursor(LoadCursorW(NULL, (LPCWSTR)IDC_SIZEWE)); return TRUE; }
+            RECT crc; GetClientRect(hwnd, &crc);
+            int zoneTop = DPIScale(140);
+            int zoneBottom = crc.bottom - DPIScale(100);
+            if (spt.y >= zoneTop && spt.y <= zoneBottom) {
+                int d = spt.x - g_SplitX; if (d < 0) d = -d;
+                if (d <= DPIScale(3)) { SetCursor(LoadCursorW(NULL, (LPCWSTR)IDC_SIZEWE)); return TRUE; }
+            }
         }
         return DefWindowProcW(hwnd, uMsg, wParam, lParam);
 
-    case WM_LBUTTONDOWN: // v1.5: 命中分栏线开始拖拽
+    case WM_LBUTTONDOWN: // 命中分栏线开始拖拽（同样仅限列表区域高度内）
         if (g_SplitX > 0) {
-            int d = (int)(short)LOWORD(lParam) - g_SplitX; if (d < 0) d = -d;
-            if (d <= DPIScale(3)) { g_bDragSplit = TRUE; SetCapture(hwnd); }
+            RECT crc; GetClientRect(hwnd, &crc);
+            int y = (int)(short)HIWORD(lParam);
+            if (y >= DPIScale(140) && y <= crc.bottom - DPIScale(100)) {
+                int d = (int)(short)LOWORD(lParam) - g_SplitX; if (d < 0) d = -d;
+                if (d <= DPIScale(3)) { g_bDragSplit = TRUE; SetCapture(hwnd); }
+            }
         }
         break;
 
@@ -1294,8 +1263,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
     case WM_PAINT: { // v1.5: 画分栏分隔槽
         PAINTSTRUCT ps; HDC hdc = BeginPaint(hwnd, &ps);
-        if (g_SplitX > 0) {
-            RECT grc = { g_SplitX - DPIScale(2), ps.rcPaint.top, g_SplitX + DPIScale(2), ps.rcPaint.bottom };
+        if (g_SplitX > 0) { // 分隔槽同样只画到列表区域高度
+            RECT grc = { g_SplitX - DPIScale(2), DPIScale(140), g_SplitX + DPIScale(2), ps.rcPaint.bottom - DPIScale(100) };
             HBRUSH hbr = CreateSolidBrush(g_bDark ? RGB(70, 70, 70) : RGB(204, 204, 204));
             FillRect(hdc, &grc, hbr); DeleteObject(hbr);
         }
@@ -1967,7 +1936,7 @@ void ApplyFontToUI() {
         g_hTxtSize, g_hEditSizeMin, g_hTxtSizeTo, g_hEditSizeMax, g_hTxtTotalSaved, g_hComboDisk, g_hEditAddress,
         g_hComboFilter, g_hFileList, g_hHardlinkList, g_hBtnSelAllL, g_hBtnInvSelL, g_hBtnSelAllR, g_hBtnInvSelR,
         g_hBtnExportR, g_hTxtScanInfo, g_hBtnRefresh, g_hBtnAnalyze, g_hBtnCreate, g_hBtnRestore, g_hBtnAbout,
-        g_hBtnDelDup, g_hBtnLang, g_hBtnTheme, g_hBtnFont, g_hChkSlink
+        g_hBtnDelDup, g_hBtnSettings, g_hChkSlink
     };
     for (int i = 0; i < (int)(sizeof(ctrls) / sizeof(ctrls[0])); i++)
         if (ctrls[i]) SendMessage(ctrls[i], WM_SETFONT, (WPARAM)GetAppFont(), MAKELPARAM(TRUE, 0));
@@ -2053,8 +2022,7 @@ void ApplyLanguageToUI() {
     SetWindowText(g_hBtnInvSelR, TR(S_BTN_INVSEL));
     SetWindowText(g_hBtnExportR, TR(S_BTN_EXPORT));
     SetWindowText(g_hBtnDelDup, TR(S_BTN_DELDUP));
-    SetWindowText(g_hBtnLang, TR(S_BTN_LANG));
-    SetWindowText(g_hBtnTheme, TR(S_BTN_THEME));
+    SetWindowText(g_hBtnSettings, TR(S_BTN_SETTINGS));
     SetWindowText(g_hBtnAbout, TR(S_BTN_ABOUT));
     if (!g_bScanning) { // 任务进行中保持「停止」语义，避免状态错乱
         SetWindowText(g_hBtnRefresh, TR(S_BTN_REFRESH));
@@ -2255,6 +2223,12 @@ void AppendThemedItem(HMENU hMenu, UINT id, const wchar_t* text) {
     }
 }
 
+// v1.5: 级联子菜单挂载（深色下同样走自绘，父项文字指针作 itemData）
+void AppendThemedSub(HMENU hParent, HMENU hSub, const wchar_t* text) {
+    if (g_bDark) AppendMenuW(hParent, MF_OWNERDRAW | MF_POPUP, (UINT_PTR)hSub, text);
+    else AppendMenuW(hParent, MF_POPUP, (UINT_PTR)hSub, text);
+}
+
 // v1.2：不建硬链接，直接把每组多余副本送入回收站（保留每组第 1 个）
 void DoDeleteDuplicates(HWND hwnd) {
     int count = (int)SendMessage(g_hHardlinkList, LVM_GETITEMCOUNT, 0, 0);
@@ -2369,11 +2343,7 @@ void CreateControls(HWND hwnd) {
     SendMessage(g_hHardlinkList, LVM_SETIMAGELIST, LVSIL_SMALL, (LPARAM)hSysImageList);
 
     // v1.2：删除重复项（不建硬链接直接删）+ 语言 / 主题切换按钮
-    g_hBtnDelDup = CreateWindowEx(0, L"BUTTON", TR(S_BTN_DELDUP), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(570), DPIScale(580), DPIScale(140), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_DELETE_DUPS, g_hInst, NULL);
-    g_hBtnLang = CreateWindowEx(0, L"BUTTON", TR(S_BTN_LANG), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(150), DPIScale(110), DPIScale(76), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_LANG, g_hInst, NULL);
-    g_hBtnTheme = CreateWindowExW(0, L"BUTTON", TR(S_BTN_THEME), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(230), DPIScale(110), DPIScale(76), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_THEME, g_hInst, NULL);
-    g_hBtnFont = CreateWindowExW(0, L"BUTTON", TR(S_BTN_FONT), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(310), DPIScale(110), DPIScale(56), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_FONT, g_hInst, NULL); // v1.5
-
+    g_hBtnSettings = CreateWindowExW(0, L"BUTTON", TR(S_BTN_SETTINGS), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(230), DPIScale(110), DPIScale(76), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_SETTINGS, g_hInst, NULL);
 
     // v1.3: 软连接模式开关（勾选后「一键创建」改为建软连接）
     g_hChkSlink = CreateWindowEx(0, L"BUTTON", TR(S_CHK_SLINK), WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, DPIScale(720), DPIScale(583), DPIScale(130), DPIScale(30), hwnd, (HMENU)(INT_PTR)ID_CHK_SLINK, g_hInst, NULL);
@@ -2401,7 +2371,7 @@ void CreateControls(HWND hwnd) {
     SetDefaultFont(g_hBtnExportR); SetDefaultFont(g_hTxtScanInfo);
     SetDefaultFont(g_hBtnRefresh); SetDefaultFont(g_hBtnAnalyze); SetDefaultFont(g_hBtnCreate); SetDefaultFont(g_hBtnRestore);
     SetDefaultFont(g_hBtnAbout);
-    SetDefaultFont(g_hBtnDelDup); SetDefaultFont(g_hBtnLang); SetDefaultFont(g_hBtnTheme); SetDefaultFont(g_hBtnFont); // v1.5
+    SetDefaultFont(g_hBtnDelDup); SetDefaultFont(g_hBtnSettings);
     SetDefaultFont(g_hChkSlink); // v1.3
     ApplyTheme(); // v1.2 初始主题
 }
