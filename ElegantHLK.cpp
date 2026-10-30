@@ -1,4 +1,4 @@
-#define _CRT_SECURE_NO_WARNINGS 
+ï»¿#define _CRT_SECURE_NO_WARNINGS 
 
 #ifndef UNICODE
 #define UNICODE
@@ -8,7 +8,7 @@
 #endif
 
 #ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0501 // ±£³Ö Windows XP ¼æÈİ
+#define _WIN32_WINNT 0x0501 // ä¿æŒ Windows XP å…¼å®¹
 #endif
 
 #pragma warning(disable: 28251)
@@ -20,20 +20,20 @@
 #include <shlwapi.h>
 #include <commdlg.h>
 #include <wincrypt.h>
-#include <uxtheme.h>  // v1.2 °µÉ«Ö÷Ìâ£¨XP Æğ×Ô´ø£¬ÎŞĞèĞÂÒÀÀµ£© 
+#include <uxtheme.h>  // v1.2 æš—è‰²ä¸»é¢˜ï¼ˆXP èµ·è‡ªå¸¦ï¼Œæ— éœ€æ–°ä¾èµ–ï¼‰ 
 #include <aclapi.h>     // v1.3: GetNamedSecurityInfo / SetEntriesInAcl
 #include <stdio.h>
 #include <stdarg.h>
 #include <process.h>
 #include <string.h>
-#include <gdiplus.h> // Ô­ÉúÊµÏÖ¸ß·Ö±æÂÊÏÔÊ¾
+#include <gdiplus.h> // åŸç”Ÿå®ç°é«˜åˆ†è¾¨ç‡æ˜¾ç¤º
 
 #include <vector>
 #include <map>
 #include <string>
-#include <regex>     // ÒıÈëÕıÔòÓÃÓÚ¸ß¼¶¹ıÂË
+#include <regex>     // å¼•å…¥æ­£åˆ™ç”¨äºé«˜çº§è¿‡æ»¤
 
-// ½â¾ö»ù´¡°æ XP SDK Òş²Ø SHA256 ºêµÄÎÊÌâ
+// è§£å†³åŸºç¡€ç‰ˆ XP SDK éšè— SHA256 å®çš„é—®é¢˜
 #ifndef CALG_SHA_256
 #define ALG_SID_SHA_256 12
 #define CALG_SHA_256 (ALG_CLASS_HASH | ALG_TYPE_ANY | ALG_SID_SHA_256)
@@ -75,7 +75,7 @@
 #define ID_BTN_RESTORE_SLINK 1009
 #define ID_BTN_ABOUT         1011
 
-// ¸ß¼¶¹ıÂËÓëĞÂ¿Ø¼ş ID
+// é«˜çº§è¿‡æ»¤ä¸æ–°æ§ä»¶ ID
 #define ID_EDIT_INC_REGEX    1012
 #define ID_EDIT_EXC_REGEX    1013
 #define ID_EDIT_MIN_SIZE     1014
@@ -89,7 +89,8 @@
 #define ID_BTN_EXPORT_R      1021
 #define ID_BTN_DELETE_DUPS   1022
 #define ID_CHK_SLINK         1025
-#define ID_BTN_SETTINGS      1027 // ÉèÖÃ°´Å¥£ºÓïÑÔ/Ö÷Ìâ/×ÖºÅÍ³Ò»Èë¿Ú
+#define ID_BTN_SETTINGS      1027 // è®¾ç½®æŒ‰é’®ï¼šè¯­è¨€/ä¸»é¢˜/å­—å·ç»Ÿä¸€å…¥å£
+#define ID_BTN_SYNC_MAP      1028 // v1.7ï¼šæŒ‰ç¡¬é“¾æ¥æ˜ å°„è¡¨åŒæ­¥æ›´æ–°åçš„æ–‡ä»¶
 
 #define IDM_COPY_FILENAME    2001
 #define IDM_COPY_PATH        2002
@@ -122,34 +123,36 @@ HWND g_hBtnRefresh, g_hBtnAnalyze, g_hBtnCreate, g_hBtnRestore, g_hBtnAbout;
 HWND g_hTxtTotalSaved, g_hProgressBar, g_hGroupFilter;
 HWND g_hBtnSelAllL, g_hBtnInvSelL, g_hBtnSelAllR, g_hBtnInvSelR;
 HWND g_hBtnExportR, g_hTxtScanInfo;
-HWND g_hBtnDelDup;            // v1.2 ĞÂÔö°´Å¥
-HWND g_hChkSlink;               // v1.3: ÈíÁ¬½ÓÄ£Ê½¸´Ñ¡¿ò
-BOOL g_bSlinkMode = FALSE;      // v1.3: TRUE = Ò»¼ü×ª»»Ê±½¨ÈíÁ¬½Ó
-int g_AnchorL = -1, g_AnchorR = -1; // v1.3: Shift ·¶Î§¹´Ñ¡µÄÃªµãĞĞ
-volatile LONG g_nAclFixed = 0;  // v1.3: ±¾ÂÖ ACL È¨ÏŞ½Ó¹Ü³É¹¦´ÎÊı
-int g_FontPt = 11;             // v1.5: UI ×ÖºÅ£¨°õ£©£¬×¢²á±í¿É´æ
-int g_SplitX = 0;              // v1.5: ×óÓÒÁĞ±í·ÖÀ¸Ïß¿Í»§Çø x£¨0=Î´³õÊ¼»¯£©
-int g_SplitPermille = 500;     // v1.5: ·ÖÀ¸±ÈÀı£¨Ç§·Ö±È£¬°´¿ÉÓÃ¿í¶È£©
-BOOL g_bDragSplit = FALSE;     // v1.5: ÕıÔÚÍÏ×§·ÖÀ¸
-HWND g_hBtnSettings;          // ÉèÖÃ°´Å¥£¨ÓïÑÔ/Ö÷Ìâ/×ÖºÅÍ³Ò»Èë¿Ú£©
+HWND g_hBtnSyncMap;             // v1.7ï¼šåŒæ­¥æ˜ å°„è¡¨æŒ‰é’®
+wchar_t g_szLastMapPath[2048] = L""; // v1.7ï¼šæœ€è¿‘ä¸€æ¬¡å¯¼å‡ºçš„æ˜ å°„è¡¨è·¯å¾„
+HWND g_hBtnDelDup;            // v1.2 æ–°å¢æŒ‰é’®
+HWND g_hChkSlink;               // v1.3: è½¯è¿æ¥æ¨¡å¼å¤é€‰æ¡†
+BOOL g_bSlinkMode = FALSE;      // v1.3: TRUE = ä¸€é”®è½¬æ¢æ—¶å»ºè½¯è¿æ¥
+int g_AnchorL = -1, g_AnchorR = -1; // v1.3: Shift èŒƒå›´å‹¾é€‰çš„é”šç‚¹è¡Œ
+volatile LONG g_nAclFixed = 0;  // v1.3: æœ¬è½® ACL æƒé™æ¥ç®¡æˆåŠŸæ¬¡æ•°
+int g_FontPt = 11;             // v1.5: UI å­—å·ï¼ˆç£…ï¼‰ï¼Œæ³¨å†Œè¡¨å¯å­˜
+int g_SplitX = 0;              // v1.5: å·¦å³åˆ—è¡¨åˆ†æ çº¿å®¢æˆ·åŒº xï¼ˆ0=æœªåˆå§‹åŒ–ï¼‰
+int g_SplitPermille = 500;     // v1.5: åˆ†æ æ¯”ä¾‹ï¼ˆåƒåˆ†æ¯”ï¼ŒæŒ‰å¯ç”¨å®½åº¦ï¼‰
+BOOL g_bDragSplit = FALSE;     // v1.5: æ­£åœ¨æ‹–æ‹½åˆ†æ 
+HWND g_hBtnSettings;          // è®¾ç½®æŒ‰é’®ï¼ˆè¯­è¨€/ä¸»é¢˜/å­—å·ç»Ÿä¸€å…¥å£ï¼‰
 wchar_t g_szScanFile[2048] = L"";
 volatile int g_nScanCounter = 0;
 
-// V1.1 Í³¼ÆÓëÍÏ×§
-size_t g_StatGroupCount = 0;   // ÖØ¸´×éÊı
-size_t g_StatDupFileCount = 0; // ÖØ¸´ÎÄ¼ş×ÜÊı
-DWORD  g_StatElapsedMs = 0;    // ·ÖÎöºÄÊ±(ºÁÃë)
-std::map<std::wstring, int> g_GroupParity; // SHA256 -> 0/1 ½»Ìæµ×É«
-CRITICAL_SECTION g_csParity;               // ±£»¤ g_GroupParity ¿çÏß³Ì·ÃÎÊ
+// V1.1 ç»Ÿè®¡ä¸æ‹–æ‹½
+size_t g_StatGroupCount = 0;   // é‡å¤ç»„æ•°
+size_t g_StatDupFileCount = 0; // é‡å¤æ–‡ä»¶æ€»æ•°
+DWORD  g_StatElapsedMs = 0;    // åˆ†æè€—æ—¶(æ¯«ç§’)
+std::map<std::wstring, int> g_GroupParity; // SHA256 -> 0/1 äº¤æ›¿åº•è‰²
+CRITICAL_SECTION g_csParity;               // ä¿æŠ¤ g_GroupParity è·¨çº¿ç¨‹è®¿é—®
 
-// ¾²Ì¬ÎÄ±¾ºÍÊäÈë¿ò HWND
+// é™æ€æ–‡æœ¬å’Œè¾“å…¥æ¡† HWND
 HWND g_hTxtDisk, g_hTxtAddr, g_hTxtFilter;
 HWND g_hTxtInc, g_hEditInc, g_hTxtExc, g_hEditExc, g_hTxtSize, g_hEditSizeMin, g_hTxtSizeTo, g_hEditSizeMax;
 
 wchar_t g_CurrentPath[2048] = L"C:\\";
 wchar_t g_CurrentFilter[1024] = L"*.*";
 
-// ¸ß¼¶¹ıÂË²ÎÊı
+// é«˜çº§è¿‡æ»¤å‚æ•°
 wchar_t g_IncludeRegex[1024] = L"";
 wchar_t g_ExcludeRegex[1024] = L"";
 LONGLONG g_MinSize = 0;
@@ -171,7 +174,7 @@ struct FileNode {
     DWORD attr = 0;
 };
 
-// ÅÅĞò×´Ì¬±äÁ¿
+// æ’åºçŠ¶æ€å˜é‡
 HWND g_CurrentSortList = NULL;
 int g_CurrentSortColumn = 0;
 BOOL g_CurrentSortAsc = TRUE;
@@ -179,11 +182,11 @@ BOOL g_CurrentSortAsc = TRUE;
 int g_SortColLeft = 0; BOOL g_SortAscLeft = TRUE;
 int g_SortColRight = 0; BOOL g_SortAscRight = TRUE;
 
-// Ä¿±êÉ¨ÃèÎÄ¼ş¼Ğ¼¯ºÏ
+// ç›®æ ‡æ‰«ææ–‡ä»¶å¤¹é›†åˆ
 std::vector<std::wstring> g_TargetDirs;
 
-// ===================== v1.2£ºi18n ×Ö·û´®±í =====================
-// zh ÁĞÎª GBK ×Ö½Ú¡¢en ÁĞÎª´¿ ASCII£¬Í³Ò»×ß A °æ Win32 API£»·ÇÖĞÎÄÏµÍ³Ö»ÏÔÊ¾ ASCII£¬ÓÀÔ¶²»ÂÒÂë¡£
+// ===================== v1.2ï¼ši18n å­—ç¬¦ä¸²è¡¨ =====================
+// zh åˆ—ä¸º GBK å­—èŠ‚ã€en åˆ—ä¸ºçº¯ ASCIIï¼Œç»Ÿä¸€èµ° A ç‰ˆ Win32 APIï¼›éä¸­æ–‡ç³»ç»Ÿåªæ˜¾ç¤º ASCIIï¼Œæ°¸è¿œä¸ä¹±ç ã€‚
 enum StrId {
     S_TITLE, S_DISK, S_ADDR, S_TYPE, S_GROUP_FILTER, S_INC_REGEX, S_EXC_REGEX, S_SIZE_MB,
     S_FLT_CUSTOM, S_FLT_VIDEO, S_FLT_HD, S_FLT_AUDIO, S_FLT_IMAGE, S_FLT_EXE, S_FLT_ZIP, S_FLT_DOC,
@@ -207,150 +210,164 @@ enum StrId {
     S_CHK_SLINK, S_BTN_CREATE_SL, S_MSG_CONFIRM_ALL_SL, S_MSG_CONFIRM_SEL_SL,
     S_MSG_CREATE_DONE_SL, S_MSG_SL_FAIL_HINT, S_MSG_SL_NO_SUPPORT,     S_ACL_COUNT_FMT,
     S_BTN_FONT, S_FONT_S, S_FONT_M, S_FONT_L, S_FONT_XL, S_CTX_OPEN_GROUP, // v1.5
-S_BTN_SETTINGS, // ÉèÖÃ
+S_BTN_SETTINGS, // è®¾ç½®
+    // v1.7ï¼šç¡¬é“¾æ¥æ˜ å°„è¡¨
+    S_BTN_SYNC_MAP, S_MAP_FILTER, S_MAP_DEFAULT_NAME, S_MSG_SYNC_EMPTY, S_MSG_SYNC_NONE,
+    S_MSG_SYNC_DONE, S_T_SYNC, S_MSG_MAP_SAVED, S_T_MAP, S_MSG_MAP_FAIL,
     S__COUNT
 };
 
 static const wchar_t* const STR_TBL[S__COUNT][2] = {
-    { L"ÓÅÑÅÓ²Á´½Ó V1.6", L"ElegantHLK V1.6" },                                       // S_TITLE
-    { L"´ÅÅÌ:", L"Disk:" },                                                           // S_DISK
-    { L"µØÖ·:", L"Path:" },                                                           // S_ADDR
-    { L"ÀàĞÍ:", L"Type:" },                                                           // S_TYPE
-    { L"¸ß¼¶É¸Ñ¡ (ÕıÔòºÚ°×Ãûµ¥ & ´óĞ¡ÏŞÖÆ)", L"Advanced Filters (regex white/blacklist & size)" }, // S_GROUP_FILTER
-    { L"°üº¬(ÕıÔò):", L"Include(regex):" },                                           // S_INC_REGEX
-    { L"ÅÅ³ı(ÕıÔò):", L"Exclude(regex):" },                                           // S_EXC_REGEX
-    { L"´óĞ¡(MB):", L"Size(MB):" },                                                   // S_SIZE_MB
-    { L"×Ô¶¨ÒåÀàĞÍ (*.*)", L"Custom (*.*)" },                                         // S_FLT_CUSTOM
-    { L"³£ÓÃÊÓÆµ (*.mp4;*.mkv;*.avi;*.rmvb;*.wmv;*.flv;*.mov;*.ts)", L"Videos (*.mp4;*.mkv;*.avi;*.rmvb;*.wmv;*.flv;*.mov;*.ts)" },
-    { L"¸ßÇå/À¶¹â (*.m2ts;*.vob;*.iso;*.webm;*.mts)", L"HD/Blu-ray (*.m2ts;*.vob;*.iso;*.webm;*.mts)" },
-    { L"³£ÓÃÒôÆµ (*.mp3;*.wav;*.flac;*.aac;*.ogg;*.ape;*.m4a;*.wma)", L"Audio (*.mp3;*.wav;*.flac;*.aac;*.ogg;*.ape;*.m4a;*.wma)" },
-    { L"Í¼Æ¬ËØ²Ä (*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.tiff)", L"Images (*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.tiff)" },
-    { L"Ö´ĞĞÎÄ¼ş (*.exe;*.dll;*.sys)", L"Executables (*.exe;*.dll;*.sys)" },
-    { L"Ñ¹Ëõ°ü (*.zip;*.rar;*.7z;*.tar;*.gz)", L"Archives (*.zip;*.rar;*.7z;*.tar;*.gz)" },
-    { L"ÎÄµµ (*.txt;*.doc;*.docx;*.pdf;*.md)", L"Documents (*.txt;*.doc;*.docx;*.pdf;*.md)" },
-    { L"È«Ñ¡", L"All" },                                                              // S_BTN_SELALL
-    { L"·´Ñ¡", L"Invert" },                                                           // S_BTN_INVSEL
-    { L"µ¼³öÁĞ±í", L"Export" },                                                       // S_BTN_EXPORT
-    { L"Ë¢ĞÂµ±Ç°Ä¿Â¼", L"Refresh Dir" },                                              // S_BTN_REFRESH
-    { L"·ÖÎöÎÄ¼ş(²éÖØ)", L"Analyze Dupes" },                                          // S_BTN_ANALYZE
-    { L"Ò»¼ü´´½¨Ó²Á´½Ó", L"Create Hardlinks" },                                       // S_BTN_CREATE
-    { L"½â°óÓ²Á´½Ó", L"Break Hardlink" },                                             // S_BTN_RESTORE
-    { L"¹ØÓÚ×÷Õß", L"About" },                                                        // S_BTN_ABOUT
-    { L"É¾³ıÖØ¸´ÎÄ¼ş", L"Delete Dupes" },                                             // S_BTN_DELDUP
-    { L"ÓïÑÔ", L"Language" },                                                         // S_BTN_LANG
-    { L"Ö÷Ìâ", L"Theme" },                                                            // S_BTN_THEME
-    { L"Ãû³Æ(¿Éµã»÷ÅÅĞò)", L"Name (click to sort)" },                                 // S_COL_NAME
-    { L"´óĞ¡", L"Size" },                                                             // S_COL_SIZE
-    { L"×´Ì¬", L"Status" },                                                           // S_COL_STATUS
-    { L"Ó²Á´½Ó", L"Hardlink" },                                                       // S_COL_HL
-    { L"ÒÑ°ó¶¨/Ç±ÔÚÖØ¸´ÎÄ¼ş", L"Linked/Duplicate Files" },                            // S_COL_DUP
-    { L"×´Ì¬ĞÅÏ¢", L"Status Info" },                                                  // S_COL_STATUSINFO
-    { L"´óĞ¡/¿ÉÊ¡", L"Size/Savings" },                                                // S_COL_SIZESAVE
-    { L"·µ»ØÉÏÒ»¼¶", L"[Up one level]" },                                             // S_UP_LEVEL
-    { L"ÎÄ¼ş¼Ğ", L"Folder" },                                                         // S_FOLDER
-    { L"ÒÑ°ó¶¨: %lu", L"Links: %lu" },                                                // S_LINKS_FMT
-    { L"ÎŞÈ¨ÏŞ¶ÁÈ¡", L"Access Denied" },                                              // S_NO_PERM
-    { L"ÕıÔÚÉ¨Ãè: %s", L"Scanning: %s" },                                             // S_SCANNING_FMT
-    { L"ÕıÔÚµİ¹éÊÕ¼¯ÎÄ¼şÁĞ±í...", L"Collecting file list..." },                       // S_COLLECTING
-    { L"ÕıÔÚĞ£Ñé: %s", L"Hashing: %s" },                                              // S_HASHING_FMT
-    { L"ÖØ¸´(%zu¸ö)", L"Dupes(%zu)" },                                                // S_DUP_FMT
-    { L"ÕıÔÚÍ£Ö¹...", L"Stopping..." },                                               // S_STOPPING
-    { L"Í£Ö¹É¨Ãè", L"Stop Scan" },                                                    // S_STOP_SCAN
-    { L"ÕıÔÚÖÕÖ¹...", L"Terminating..." },                                            // S_ABORTING
-    { L"ÖÕÖ¹·ÖÎö", L"Stop Analysis" },                                                // S_STOP_ANALYZE
-    { L"ÖÕÖ¹×ª»»", L"Stop Convert" },                                                 // S_STOP_CREATE
-    { L"×Ü¼Æ¿ÉÊ¡: µÈ´ı·ÖÎö...", L"Total savings: waiting..." },                       // S_WAIT_ANALYZE
-    { L"Ó²Á´½Óºó×Ü¼Æ¿ÉÊ¡¿Õ¼ä: %s", L"Total savings after hardlink: %s" },             // S_TOTAL_SAVED_FMT
-    { L"Ó²Á´½Óºó×Ü¼Æ¿ÉÊ¡¿Õ¼ä: 0.00 KB", L"Total savings after hardlink: 0.00 KB" },   // S_TOTAL_SAVED_INIT
-    { L"¿ÉÊ¡¿Õ¼ä: %s  |  ÖØ¸´×é: %zu  |  ÖØ¸´ÎÄ¼ş: %zu  |  ºÄÊ±: %.2fs", L"Savings: %s  |  Groups: %zu  |  Files: %zu  |  Time: %.2fs" }, // S_STATS_FMT
-    { L"ÌáÊ¾", L"Notice" },                                                           // S_T_TIP
-    { L"´íÎó", L"Error" },                                                            // S_T_ERROR
-    { L"Íê³É", L"Done" },                                                             // S_T_DONE
-    { L"ÇëÏÈÖ´ĞĞ¡¾·ÖÎöÎÄ¼ş(²éÖØ)¡¿£¬ÕÒ³öÖØ¸´ÎÄ¼şºóÔÙÖ´ĞĞÒ»¼ü×ª»»£¡", L"Please run [Analyze Dupes] first to find duplicates before creating hardlinks!" }, // S_MSG_NEED_ANALYZE
-    { L"¼ì²âµ½Ò×¸Ä±äµÄ°ì¹«ÎÄµµ»ò±¸·İÎÄ¼ş£¨Èç .docx, .xlsx, .bak µÈ£©¡£\nÓ²Á´½Ó»áµ¼ÖÂÒ»´¦ĞŞ¸Ä´¦´¦±»ĞŞ¸Ä£¬²»½¨Òé¶ÔĞèÒª¶ÀÁ¢±à¼­µÄÎÄ¼şÊ¹ÓÃ¡£\n\n[ÊÇ(Y)] °²È«Ä£Ê½£º×Ô¶¯ÅÅ³ıÕâĞ©¸ß·çÏÕÎÄ¼ş²¢×ª»»ÆäÓàÎÄ¼ş\n[·ñ(N)] Ç¿ÖÆÄ£Ê½£ºÎŞÊÓ¾¯¸æ£¬È«²¿×ª»»ÎªÓ²Á´½Ó\n[È¡Ïû] ÖÕÖ¹²Ù×÷",
+    { L"ä¼˜é›…ç¡¬é“¾æ¥ V1.6", L"ElegantHLK V1.6" },                                       // S_TITLE
+    { L"ç£ç›˜:", L"Disk:" },                                                           // S_DISK
+    { L"åœ°å€:", L"Path:" },                                                           // S_ADDR
+    { L"ç±»å‹:", L"Type:" },                                                           // S_TYPE
+    { L"é«˜çº§ç­›é€‰ (æ­£åˆ™é»‘ç™½åå• & å¤§å°é™åˆ¶)", L"Advanced Filters (regex white/blacklist & size)" }, // S_GROUP_FILTER
+    { L"åŒ…å«(æ­£åˆ™):", L"Include(regex):" },                                           // S_INC_REGEX
+    { L"æ’é™¤(æ­£åˆ™):", L"Exclude(regex):" },                                           // S_EXC_REGEX
+    { L"å¤§å°(MB):", L"Size(MB):" },                                                   // S_SIZE_MB
+    { L"è‡ªå®šä¹‰ç±»å‹ (*.*)", L"Custom (*.*)" },                                         // S_FLT_CUSTOM
+    { L"å¸¸ç”¨è§†é¢‘ (*.mp4;*.mkv;*.avi;*.rmvb;*.wmv;*.flv;*.mov;*.ts)", L"Videos (*.mp4;*.mkv;*.avi;*.rmvb;*.wmv;*.flv;*.mov;*.ts)" },
+    { L"é«˜æ¸…/è“å…‰ (*.m2ts;*.vob;*.iso;*.webm;*.mts)", L"HD/Blu-ray (*.m2ts;*.vob;*.iso;*.webm;*.mts)" },
+    { L"å¸¸ç”¨éŸ³é¢‘ (*.mp3;*.wav;*.flac;*.aac;*.ogg;*.ape;*.m4a;*.wma)", L"Audio (*.mp3;*.wav;*.flac;*.aac;*.ogg;*.ape;*.m4a;*.wma)" },
+    { L"å›¾ç‰‡ç´ æ (*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.tiff)", L"Images (*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.tiff)" },
+    { L"æ‰§è¡Œæ–‡ä»¶ (*.exe;*.dll;*.sys)", L"Executables (*.exe;*.dll;*.sys)" },
+    { L"å‹ç¼©åŒ… (*.zip;*.rar;*.7z;*.tar;*.gz)", L"Archives (*.zip;*.rar;*.7z;*.tar;*.gz)" },
+    { L"æ–‡æ¡£ (*.txt;*.doc;*.docx;*.pdf;*.md)", L"Documents (*.txt;*.doc;*.docx;*.pdf;*.md)" },
+    { L"å…¨é€‰", L"All" },                                                              // S_BTN_SELALL
+    { L"åé€‰", L"Invert" },                                                           // S_BTN_INVSEL
+    { L"å¯¼å‡ºåˆ—è¡¨", L"Export" },                                                       // S_BTN_EXPORT
+    { L"åˆ·æ–°å½“å‰ç›®å½•", L"Refresh Dir" },                                              // S_BTN_REFRESH
+    { L"åˆ†ææ–‡ä»¶(æŸ¥é‡)", L"Analyze Dupes" },                                          // S_BTN_ANALYZE
+    { L"ä¸€é”®åˆ›å»ºç¡¬é“¾æ¥", L"Create Hardlinks" },                                       // S_BTN_CREATE
+    { L"è§£ç»‘ç¡¬é“¾æ¥", L"Break Hardlink" },                                             // S_BTN_RESTORE
+    { L"å…³äºä½œè€…", L"About" },                                                        // S_BTN_ABOUT
+    { L"åˆ é™¤é‡å¤æ–‡ä»¶", L"Delete Dupes" },                                             // S_BTN_DELDUP
+    { L"è¯­è¨€", L"Language" },                                                         // S_BTN_LANG
+    { L"ä¸»é¢˜", L"Theme" },                                                            // S_BTN_THEME
+    { L"åç§°(å¯ç‚¹å‡»æ’åº)", L"Name (click to sort)" },                                 // S_COL_NAME
+    { L"å¤§å°", L"Size" },                                                             // S_COL_SIZE
+    { L"çŠ¶æ€", L"Status" },                                                           // S_COL_STATUS
+    { L"ç¡¬é“¾æ¥", L"Hardlink" },                                                       // S_COL_HL
+    { L"å·²ç»‘å®š/æ½œåœ¨é‡å¤æ–‡ä»¶", L"Linked/Duplicate Files" },                            // S_COL_DUP
+    { L"çŠ¶æ€ä¿¡æ¯", L"Status Info" },                                                  // S_COL_STATUSINFO
+    { L"å¤§å°/å¯çœ", L"Size/Savings" },                                                // S_COL_SIZESAVE
+    { L"è¿”å›ä¸Šä¸€çº§", L"[Up one level]" },                                             // S_UP_LEVEL
+    { L"æ–‡ä»¶å¤¹", L"Folder" },                                                         // S_FOLDER
+    { L"å·²ç»‘å®š: %lu", L"Links: %lu" },                                                // S_LINKS_FMT
+    { L"æ— æƒé™è¯»å–", L"Access Denied" },                                              // S_NO_PERM
+    { L"æ­£åœ¨æ‰«æ: %s", L"Scanning: %s" },                                             // S_SCANNING_FMT
+    { L"æ­£åœ¨é€’å½’æ”¶é›†æ–‡ä»¶åˆ—è¡¨...", L"Collecting file list..." },                       // S_COLLECTING
+    { L"æ­£åœ¨æ ¡éªŒ: %s", L"Hashing: %s" },                                              // S_HASHING_FMT
+    { L"é‡å¤(%zuä¸ª)", L"Dupes(%zu)" },                                                // S_DUP_FMT
+    { L"æ­£åœ¨åœæ­¢...", L"Stopping..." },                                               // S_STOPPING
+    { L"åœæ­¢æ‰«æ", L"Stop Scan" },                                                    // S_STOP_SCAN
+    { L"æ­£åœ¨ç»ˆæ­¢...", L"Terminating..." },                                            // S_ABORTING
+    { L"ç»ˆæ­¢åˆ†æ", L"Stop Analysis" },                                                // S_STOP_ANALYZE
+    { L"ç»ˆæ­¢è½¬æ¢", L"Stop Convert" },                                                 // S_STOP_CREATE
+    { L"æ€»è®¡å¯çœ: ç­‰å¾…åˆ†æ...", L"Total savings: waiting..." },                       // S_WAIT_ANALYZE
+    { L"ç¡¬é“¾æ¥åæ€»è®¡å¯çœç©ºé—´: %s", L"Total savings after hardlink: %s" },             // S_TOTAL_SAVED_FMT
+    { L"ç¡¬é“¾æ¥åæ€»è®¡å¯çœç©ºé—´: 0.00 KB", L"Total savings after hardlink: 0.00 KB" },   // S_TOTAL_SAVED_INIT
+    { L"å¯çœç©ºé—´: %s  |  é‡å¤ç»„: %zu  |  é‡å¤æ–‡ä»¶: %zu  |  è€—æ—¶: %.2fs", L"Savings: %s  |  Groups: %zu  |  Files: %zu  |  Time: %.2fs" }, // S_STATS_FMT
+    { L"æç¤º", L"Notice" },                                                           // S_T_TIP
+    { L"é”™è¯¯", L"Error" },                                                            // S_T_ERROR
+    { L"å®Œæˆ", L"Done" },                                                             // S_T_DONE
+    { L"è¯·å…ˆæ‰§è¡Œã€åˆ†ææ–‡ä»¶(æŸ¥é‡)ã€‘ï¼Œæ‰¾å‡ºé‡å¤æ–‡ä»¶åå†æ‰§è¡Œä¸€é”®è½¬æ¢ï¼", L"Please run [Analyze Dupes] first to find duplicates before creating hardlinks!" }, // S_MSG_NEED_ANALYZE
+    { L"æ£€æµ‹åˆ°æ˜“æ”¹å˜çš„åŠå…¬æ–‡æ¡£æˆ–å¤‡ä»½æ–‡ä»¶ï¼ˆå¦‚ .docx, .xlsx, .bak ç­‰ï¼‰ã€‚\nç¡¬é“¾æ¥ä¼šå¯¼è‡´ä¸€å¤„ä¿®æ”¹å¤„å¤„è¢«ä¿®æ”¹ï¼Œä¸å»ºè®®å¯¹éœ€è¦ç‹¬ç«‹ç¼–è¾‘çš„æ–‡ä»¶ä½¿ç”¨ã€‚\n\n[æ˜¯(Y)] å®‰å…¨æ¨¡å¼ï¼šè‡ªåŠ¨æ’é™¤è¿™äº›é«˜é£é™©æ–‡ä»¶å¹¶è½¬æ¢å…¶ä½™æ–‡ä»¶\n[å¦(N)] å¼ºåˆ¶æ¨¡å¼ï¼šæ— è§†è­¦å‘Šï¼Œå…¨éƒ¨è½¬æ¢ä¸ºç¡¬é“¾æ¥\n[å–æ¶ˆ] ç»ˆæ­¢æ“ä½œ",
       L"Detected frequently-changing office documents or backup files (e.g. .docx, .xlsx, .bak).\nHardlinks mean editing one edits all; not recommended for files you edit independently.\n\n[Yes] Safe mode: exclude these risky files and convert the rest\n[No] Force mode: ignore the warning and convert everything\n[Cancel] Abort" }, // S_MSG_RISKY
-    { L"¸ßÎ£ÎÄ¼şÀ¹½Ø¾¯¸æ", L"Risky Files Warning" },                                  // S_T_RISKY
-    { L"ÄúÃ»ÓĞÔÚÓÒ²à¹´Ñ¡ÈÎºÎÖ¸¶¨ÎÄ¼ş¡£\nÈ·¶¨Òª½«ÓÒ²àÁĞ±íÖĞ¡¾ËùÓĞ¡¿ÖØ¸´µÄÎÄ¼şÈ«²¿×ª»»ÎªÓ²Á´½ÓÂğ£¿",
+    { L"é«˜å±æ–‡ä»¶æ‹¦æˆªè­¦å‘Š", L"Risky Files Warning" },                                  // S_T_RISKY
+    { L"æ‚¨æ²¡æœ‰åœ¨å³ä¾§å‹¾é€‰ä»»ä½•æŒ‡å®šæ–‡ä»¶ã€‚\nç¡®å®šè¦å°†å³ä¾§åˆ—è¡¨ä¸­ã€æ‰€æœ‰ã€‘é‡å¤çš„æ–‡ä»¶å…¨éƒ¨è½¬æ¢ä¸ºç¡¬é“¾æ¥å—ï¼Ÿ",
       L"No files are checked on the right.\nConvert ALL duplicate files in the right list to hardlinks?" }, // S_MSG_CONFIRM_ALL
-    { L"È«²¿ÇåÀíÈ·ÈÏ", L"Convert All Confirmation" },                                 // S_T_CONFIRM_ALL
-    { L"È·¶¨Òª½«Äú¡¾¹´Ñ¡¡¿µÄÖØ¸´µÄÎÄ¼ş×ª»»ÎªÓ²Á´½ÓÂğ£¿\n(Î´¹´Ñ¡µÄ½«×Ô¶¯ºöÂÔ)",
+    { L"å…¨éƒ¨æ¸…ç†ç¡®è®¤", L"Convert All Confirmation" },                                 // S_T_CONFIRM_ALL
+    { L"ç¡®å®šè¦å°†æ‚¨ã€å‹¾é€‰ã€‘çš„é‡å¤çš„æ–‡ä»¶è½¬æ¢ä¸ºç¡¬é“¾æ¥å—ï¼Ÿ\n(æœªå‹¾é€‰çš„å°†è‡ªåŠ¨å¿½ç•¥)",
       L"Convert the CHECKED duplicate files to hardlinks?\n(Unchecked items will be ignored)" }, // S_MSG_CONFIRM_SEL
-    { L"Ñ¡ÖĞÎÄ¼şÇåÀíÈ·ÈÏ", L"Convert Checked Confirmation" },                         // S_T_CONFIRM_SEL
-    { L"ÓÒ²àÁĞ±íÎª¿Õ£¬ÇëÏÈ¡¸·ÖÎöÎÄ¼ş(²éÖØ)¡¹ÕÒ³öÒÑÓĞÓ²Á´½Ó¡£", L"Right list is empty. Run [Analyze Dupes] first to find existing hardlinks." }, // S_MSG_EMPTY_R_ANALYZE
-    { L"Ã»ÓĞ¿É½â°óµÄÏî£¨ĞèÒªµÚ 5 ÁĞ¡¸Ó²Á´½Ó¡¹Îª 1£©¡£", L"Nothing to break (column 5 'Hardlink' must be 1)." }, // S_MSG_NO_UNLINK
-    { L"½«¶Ô %zu ¸öÎÄ¼şÖ´ĞĞ½â°ó£ºÏÈ¸´ÖÆÊµÊı¾İµ½ÁÙÊ±ÎÄ¼ş£¬ÔÙĞ´»ØÔ­Â·¾¶£¬ÆÚ¼ä»áÁÙÊ±Õ¼ÓÃÍ¬µÈ¿Õ¼ä¡£\n¼ÌĞø£¿",
+    { L"é€‰ä¸­æ–‡ä»¶æ¸…ç†ç¡®è®¤", L"Convert Checked Confirmation" },                         // S_T_CONFIRM_SEL
+    { L"å³ä¾§åˆ—è¡¨ä¸ºç©ºï¼Œè¯·å…ˆã€Œåˆ†ææ–‡ä»¶(æŸ¥é‡)ã€æ‰¾å‡ºå·²æœ‰ç¡¬é“¾æ¥ã€‚", L"Right list is empty. Run [Analyze Dupes] first to find existing hardlinks." }, // S_MSG_EMPTY_R_ANALYZE
+    { L"æ²¡æœ‰å¯è§£ç»‘çš„é¡¹ï¼ˆéœ€è¦ç¬¬ 5 åˆ—ã€Œç¡¬é“¾æ¥ã€ä¸º 1ï¼‰ã€‚", L"Nothing to break (column 5 'Hardlink' must be 1)." }, // S_MSG_NO_UNLINK
+    { L"å°†å¯¹ %zu ä¸ªæ–‡ä»¶æ‰§è¡Œè§£ç»‘ï¼šå…ˆå¤åˆ¶å®æ•°æ®åˆ°ä¸´æ—¶æ–‡ä»¶ï¼Œå†å†™å›åŸè·¯å¾„ï¼ŒæœŸé—´ä¼šä¸´æ—¶å ç”¨åŒç­‰ç©ºé—´ã€‚\nç»§ç»­ï¼Ÿ",
       L"Will break hardlinks for %zu files: copy the real data to a temp file, then write it back; equal disk space is used temporarily.\nContinue?" }, // S_MSG_UNLINK_ASK
-    { L"½â°óÓ²Á´½ÓÈ·ÈÏ", L"Break Hardlink Confirmation" },                            // S_T_UNLINK
-    { L"½â°óÍê³É¡£\n\n³É¹¦£º%zu\nÊ§°Ü£º%zu", L"Break done.\n\nSucceeded: %zu\nFailed: %zu" }, // S_MSG_UNLINK_DONE
-    { L"×÷Õß£ººãÁÒ EternalBlaze\ngithubÏîÄ¿µØÖ·£ºhttps://github.com/Henglie/ElegantHLK\n¿ªÔ´Ğ­Òé£ºMIT",
+    { L"è§£ç»‘ç¡¬é“¾æ¥ç¡®è®¤", L"Break Hardlink Confirmation" },                            // S_T_UNLINK
+    { L"è§£ç»‘å®Œæˆã€‚\n\næˆåŠŸï¼š%zu\nå¤±è´¥ï¼š%zu", L"Break done.\n\nSucceeded: %zu\nFailed: %zu" }, // S_MSG_UNLINK_DONE
+    { L"ä½œè€…ï¼šæ’çƒˆ EternalBlaze\ngithubé¡¹ç›®åœ°å€ï¼šhttps://github.com/Henglie/ElegantHLK\nå¼€æºåè®®ï¼šMIT",
       L"Author: Henglie EternalBlaze\nGitHub: https://github.com/Henglie/ElegantHLK\nLicense: MIT" }, // S_MSG_ABOUT
-    { L"Ó²Á´½Ó²»ÄÜ×÷ÓÃÓÚÎÄ¼ş¼Ğ£¡", L"Hardlinks cannot be applied to folders!" },      // S_MSG_DIR_HLINK
-    { L"ÇëÊ¹ÓÃÁĞ±íÉÏ·½µÄ¡ºÒ»¼ü´´½¨Ó²Á´½Ó¡»°´Å¥Ö´ĞĞ¡£", L"Please use the [Create Hardlinks] button below the list." }, // S_MSG_USE_MAIN_BTN
-    { L"È·¶¨½«´ËÏîËÍÈë»ØÊÕÕ¾£¿\n\n%s", L"Send this item to the Recycle Bin?\n\n%s" }, // S_MSG_DEL_ONE
-    { L"É¾³ıµ½»ØÊÕÕ¾", L"Delete to Recycle Bin" },                                    // S_T_DEL_RECYCLE
-    { L"·ÖÎöÒÑ±»ÓÃ»§ÖÕÖ¹£¡", L"Analysis cancelled by user!" },                        // S_MSG_ANALYZE_CANCELLED
-    { L"·ÖÎö³É¹¦£¡\n\nÖØ¸´ÎÄ¼ş×éÊı£º%zu ×é\nÖØ¸´ÎÄ¼ş×ÜÊı£º%zu ¸ö\n¿É´´½¨µÄÓ²Á´½ÓÊı£º%zu ¸ö\nÔ¤¼Æ¿ÉÊÍ·Å¿Õ¼ä£º%s\n±¾´Î·ÖÎöºÄÊ±£º%.2f Ãë",
+    { L"ç¡¬é“¾æ¥ä¸èƒ½ä½œç”¨äºæ–‡ä»¶å¤¹ï¼", L"Hardlinks cannot be applied to folders!" },      // S_MSG_DIR_HLINK
+    { L"è¯·ä½¿ç”¨åˆ—è¡¨ä¸Šæ–¹çš„ã€ä¸€é”®åˆ›å»ºç¡¬é“¾æ¥ã€æŒ‰é’®æ‰§è¡Œã€‚", L"Please use the [Create Hardlinks] button below the list." }, // S_MSG_USE_MAIN_BTN
+    { L"ç¡®å®šå°†æ­¤é¡¹é€å…¥å›æ”¶ç«™ï¼Ÿ\n\n%s", L"Send this item to the Recycle Bin?\n\n%s" }, // S_MSG_DEL_ONE
+    { L"åˆ é™¤åˆ°å›æ”¶ç«™", L"Delete to Recycle Bin" },                                    // S_T_DEL_RECYCLE
+    { L"åˆ†æå·²è¢«ç”¨æˆ·ç»ˆæ­¢ï¼", L"Analysis cancelled by user!" },                        // S_MSG_ANALYZE_CANCELLED
+    { L"åˆ†ææˆåŠŸï¼\n\né‡å¤æ–‡ä»¶ç»„æ•°ï¼š%zu ç»„\né‡å¤æ–‡ä»¶æ€»æ•°ï¼š%zu ä¸ª\nå¯åˆ›å»ºçš„ç¡¬é“¾æ¥æ•°ï¼š%zu ä¸ª\né¢„è®¡å¯é‡Šæ”¾ç©ºé—´ï¼š%s\næœ¬æ¬¡åˆ†æè€—æ—¶ï¼š%.2f ç§’",
       L"Analysis complete!\n\nDuplicate groups: %zu\nDuplicate files: %zu\nHardlinks to create: %zu\nEstimated space to free: %s\nTime elapsed: %.2f s" }, // S_MSG_ANALYZE_DONE
-    { L"²éÖØ·ÖÎöÍê³É", L"Analysis Complete" },                                        // S_T_ANALYZE_DONE
-    { L"Ó²Á´½ÓÅúÁ¿×ª»»Íê³É£¡\n\n³É¹¦Ìæ»»²¢ÊÍ·ÅÎïÀíÎÄ¼ş: %zu ¸ö\nÌæ»»Ê§°Ü(»òÒÑÅÅ³ı): %zu ¸ö\n\n(¼´½«×Ô¶¯Ë¢ĞÂÄ¿Â¼)",
+    { L"æŸ¥é‡åˆ†æå®Œæˆ", L"Analysis Complete" },                                        // S_T_ANALYZE_DONE
+    { L"ç¡¬é“¾æ¥æ‰¹é‡è½¬æ¢å®Œæˆï¼\n\næˆåŠŸæ›¿æ¢å¹¶é‡Šæ”¾ç‰©ç†æ–‡ä»¶: %zu ä¸ª\næ›¿æ¢å¤±è´¥(æˆ–å·²æ’é™¤): %zu ä¸ª\n\n(å³å°†è‡ªåŠ¨åˆ·æ–°ç›®å½•)",
       L"Batch hardlink conversion done!\n\nConverted and freed: %zu\nFailed (or excluded): %zu\n\n(The directory will refresh automatically)" }, // S_MSG_CREATE_DONE
-    { L"²Ù×÷Íê³É", L"Operation Complete" },                                           // S_T_OP_DONE
-    { L"ÓÒ²àÁĞ±íÎª¿Õ£¬ÇëÏÈ½øĞĞ¡¾·ÖÎöÎÄ¼ş(²éÖØ)¡¿ÔÙµ¼³ö¡£", L"Right list is empty. Run [Analyze Dupes] before exporting." }, // S_MSG_EMPTY_EXPORT
-    { L"ÖØ¸´ÎÄ¼şÁĞ±í.csv", L"duplicate_list.csv" },                                   // S_EXPORT_DEFAULT_NAME
-    { L"CSV ÎÄ¼ş (*.csv)\0*.csv\0ÎÄ±¾ÎÄ¼ş (*.txt)\0*.txt\0ËùÓĞµÄÀàĞÍ\0*.*\0", L"CSV File (*.csv)\0*.csv\0Text File (*.txt)\0*.txt\0All Files\0*.*\0" }, // S_EXPORT_FILTER
-    { L"ÎŞ·¨Ğ´ÈëÎÄ¼ş£¬Çë¼ì²éÎÄ¼şÊÇ·ñ±»Õ¼ÓÃ»òÈ¨ÏŞ²»×ã¡£", L"Cannot write the file. Check whether it is locked or permission is denied." }, // S_MSG_WRITE_FAIL
-    { L"Â·¾¶,×´Ì¬,´óĞ¡/¿ÉÊ¡,SHA256,ÒÑÓ²Á´½Ó\r\n", L"Path,Status,Size/Savings,SHA256,Hardlinked\r\n" }, // S_CSV_HEADER
-    { L"ÊÇ", L"Yes" },                                                                // S_YES
-    { L"·ñ", L"No" },                                                                 // S_NO
-    { L"ÒÑµ¼³ö %zu Ìõ¼ÇÂ¼µ½£º\n%s\n\nÊÇ·ñ´ò¿ªÎÄ¼şËùÔÚÎ»ÖÃ£¿", L"Exported %zu records to:\n%s\n\nOpen the containing folder?" }, // S_MSG_EXPORT_DONE
-    { L"µ¼³ö³É¹¦", L"Export Complete" },                                              // S_T_EXPORT_DONE
-    { L"¸´ÖÆÎÄ¼şÃû", L"Copy Filename" },                                              // S_CTX_NAME
-    { L"¸´ÖÆÍêÕûÂ·¾¶", L"Copy Full Path" },                                           // S_CTX_PATH
-    { L"¸´ÖÆ SHA256 (ÓÃÓÚ±È¶Ô)", L"Copy SHA256 (for comparison)" },                   // S_CTX_SHA
-    { L"ÔÚ×ÊÔ´¹ÜÀíÆ÷ÖĞ¶¨Î»", L"Locate in Explorer" },                                 // S_CTX_EXPLORE
-    { L"¶Ô¸ÃÎÄ¼ş´´½¨Ó²Á´½Ó", L"Create Hardlink for This File" },                      // S_CTX_CREATEHL
-    { L"[Î£ÏÕ] É¾³ıÎÄ¼ş", L"[Danger] Delete File" },                                  // S_CTX_DELETE
-    { L"ÓÒ²àÁĞ±íÎª¿Õ£¬ÇëÏÈÖ´ĞĞ¡¾·ÖÎöÎÄ¼ş(²éÖØ)¡¿¡£", L"Right list is empty. Run [Analyze Dupes] first." }, // S_MSG_EMPTY_R_SIMPLE
-    { L"½«±£ÁôÃ¿×éµÚ 1 ¸öÎÄ¼ş£¬ÆäÓà %zu ¸öÖØ¸´¸±±¾¡¾ËÍÈë»ØÊÕÕ¾¡¿£¨²»´´½¨Ó²Á´½Ó£¬¿ÉËæÊ±»¹Ô­£©¡£\n¼ÌĞø£¿",
+    { L"æ“ä½œå®Œæˆ", L"Operation Complete" },                                           // S_T_OP_DONE
+    { L"å³ä¾§åˆ—è¡¨ä¸ºç©ºï¼Œè¯·å…ˆè¿›è¡Œã€åˆ†ææ–‡ä»¶(æŸ¥é‡)ã€‘å†å¯¼å‡ºã€‚", L"Right list is empty. Run [Analyze Dupes] before exporting." }, // S_MSG_EMPTY_EXPORT
+    { L"é‡å¤æ–‡ä»¶åˆ—è¡¨.csv", L"duplicate_list.csv" },                                   // S_EXPORT_DEFAULT_NAME
+    { L"CSV æ–‡ä»¶ (*.csv)\0*.csv\0æ–‡æœ¬æ–‡ä»¶ (*.txt)\0*.txt\0æ‰€æœ‰çš„ç±»å‹\0*.*\0", L"CSV File (*.csv)\0*.csv\0Text File (*.txt)\0*.txt\0All Files\0*.*\0" }, // S_EXPORT_FILTER
+    { L"æ— æ³•å†™å…¥æ–‡ä»¶ï¼Œè¯·æ£€æŸ¥æ–‡ä»¶æ˜¯å¦è¢«å ç”¨æˆ–æƒé™ä¸è¶³ã€‚", L"Cannot write the file. Check whether it is locked or permission is denied." }, // S_MSG_WRITE_FAIL
+    { L"è·¯å¾„,çŠ¶æ€,å¤§å°/å¯çœ,SHA256,å·²ç¡¬é“¾æ¥\r\n", L"Path,Status,Size/Savings,SHA256,Hardlinked\r\n" }, // S_CSV_HEADER
+    { L"æ˜¯", L"Yes" },                                                                // S_YES
+    { L"å¦", L"No" },                                                                 // S_NO
+    { L"å·²å¯¼å‡º %zu æ¡è®°å½•åˆ°ï¼š\n%s\n\næ˜¯å¦æ‰“å¼€æ–‡ä»¶æ‰€åœ¨ä½ç½®ï¼Ÿ", L"Exported %zu records to:\n%s\n\nOpen the containing folder?" }, // S_MSG_EXPORT_DONE
+    { L"å¯¼å‡ºæˆåŠŸ", L"Export Complete" },                                              // S_T_EXPORT_DONE
+    { L"å¤åˆ¶æ–‡ä»¶å", L"Copy Filename" },                                              // S_CTX_NAME
+    { L"å¤åˆ¶å®Œæ•´è·¯å¾„", L"Copy Full Path" },                                           // S_CTX_PATH
+    { L"å¤åˆ¶ SHA256 (ç”¨äºæ¯”å¯¹)", L"Copy SHA256 (for comparison)" },                   // S_CTX_SHA
+    { L"åœ¨èµ„æºç®¡ç†å™¨ä¸­å®šä½", L"Locate in Explorer" },                                 // S_CTX_EXPLORE
+    { L"å¯¹è¯¥æ–‡ä»¶åˆ›å»ºç¡¬é“¾æ¥", L"Create Hardlink for This File" },                      // S_CTX_CREATEHL
+    { L"[å±é™©] åˆ é™¤æ–‡ä»¶", L"[Danger] Delete File" },                                  // S_CTX_DELETE
+    { L"å³ä¾§åˆ—è¡¨ä¸ºç©ºï¼Œè¯·å…ˆæ‰§è¡Œã€åˆ†ææ–‡ä»¶(æŸ¥é‡)ã€‘ã€‚", L"Right list is empty. Run [Analyze Dupes] first." }, // S_MSG_EMPTY_R_SIMPLE
+    { L"å°†ä¿ç•™æ¯ç»„ç¬¬ 1 ä¸ªæ–‡ä»¶ï¼Œå…¶ä½™ %zu ä¸ªé‡å¤å‰¯æœ¬ã€é€å…¥å›æ”¶ç«™ã€‘ï¼ˆä¸åˆ›å»ºç¡¬é“¾æ¥ï¼Œå¯éšæ—¶è¿˜åŸï¼‰ã€‚\nç»§ç»­ï¼Ÿ",
       L"The 1st file of each group is kept; the other %zu duplicate copies go to the Recycle Bin (no hardlinks; restorable anytime).\nContinue?" }, // S_MSG_DELDUP_ASK
-    { L"É¾³ıÖØ¸´ÎÄ¼şÈ·ÈÏ", L"Delete Duplicates Confirmation" },                       // S_T_DELDUP
-    { L"É¾³ıÍê³É¡£\n\nÒÑËÍÈë»ØÊÕÕ¾£º%zu\nÊ§°Ü£º%zu", L"Delete done.\n\nSent to Recycle Bin: %zu\nFailed: %zu" }, // S_MSG_DELDUP_DONE
-    { L"Ã»ÓĞ¿ÉÉ¾³ıµÄÖØ¸´ÎÄ¼ş£¨¿ÉÄÜ½öÊ£ÊÜ±£»¤Â·¾¶Ïî£©¡£", L"No duplicate files can be deleted (only protected paths remain)." }, // S_MSG_DELDUP_NONE
-    { L"ÒÑÌø¹ıÊÜ±£»¤Â·¾¶", L"Skipped protected paths" },                              // S_SKIPPED_PROTECTED
-    { L"ElegantHLK ÖØ¸´ÎÄ¼şÇåµ¥", L"ElegantHLK Duplicate File List" },                // S_TXT_TITLE
-    { L"×é %zu£¨SHA256: %s£©", L"Group %zu (SHA256: %s)" },                           // S_TXT_GROUP
-    { L"  [±£Áô] %s", L"  [Keep] %s" },                                               // S_TXT_KEEP
-    { L"  [ÖØ¸´] %s", L"  [Dupe] %s" },                                               // S_TXT_DUP
-    { L"ÌáÊ¾£ºÃ¿×é±£ÁôµÚ 1 ¸ö£¬ÆäÓà [ÖØ¸´] Ïî¿É°²È«É¾³ı»ò×ª»»ÎªÓ²Á´½Ó¡£", L"Hint: keep the 1st of each group; [Dupe] items can be safely deleted or converted to hardlinks." }, // S_TXT_HINT
-    { L"¸úËæÏµÍ³", L"Follow System" },                                                // S_MENU_FOLLOW
-    { L"Ç³É«", L"Light" },                                                            // S_MENU_LIGHT
-    { L"ÉîÉ«", L"Dark" },                                                             // S_MENU_DARK
-    { L"ÈíÁ¬½ÓÄ£Ê½", L"Symlink mode" },                                          // S_CHK_SLINK
-    { L"Ò»¼ü´´½¨ÈíÁ¬½Ó", L"Create Symlinks" },                                     // S_BTN_CREATE_SL
-    { L"½«Îª¡¾ËùÓĞ¡¿ÖØ¸´ÎÄ¼ş´´½¨ÈíÁ¬½Ó£¬Ö¸ÏòÃ¿×éµÚ 1 ¸öÎÄ¼ş£¨¿É¿çÅÌ·û£©¡£\nÈíÁ¬½ÓÖ»ÊÇÁ´½Ó£¬Ô´ÎÄ¼ş±»ÒÆ¶¯»òÉ¾³ıºó»áÊ§Ğ§¡£\n\nÈ·¶¨¼ÌĞøÂğ£¿", L"Will create symlinks for ALL duplicate files, each pointing to the 1st file of its group (works across volumes).\nA symlink breaks when the source file is moved or deleted.\n\nContinue?" }, // S_MSG_CONFIRM_ALL_SL
-    { L"½«Îª¡¾¹´Ñ¡¡¿µÄÖØ¸´ÎÄ¼ş´´½¨ÈíÁ¬½Ó£¬Ö¸ÏòÃ¿×éµÚ 1 ¸öÎÄ¼ş£¨¿É¿çÅÌ·û£©¡£\nÈíÁ¬½ÓÖ»ÊÇÁ´½Ó£¬Ô´ÎÄ¼ş±»ÒÆ¶¯»òÉ¾³ıºó»áÊ§Ğ§¡£\n\n¼ÌĞø£¿", L"Will create symlinks for the CHECKED duplicate files, each pointing to the 1st file of its group (works across volumes).\nA symlink breaks when the source file is moved or deleted.\n\nContinue?" }, // S_MSG_CONFIRM_SEL_SL
-    { L"ÈíÁ¬½ÓÅúÁ¿´´½¨Íê³É£¡\n\n³É¹¦´´½¨: %zu ¸ö\nÊ§°Ü: %zu ¸ö\n\n(¼´½«×Ô¶¯Ë¢ĞÂÄ¿Â¼)", L"Batch symlink creation done!\n\nCreated: %zu\nFailed: %zu\n\n(The directory will refresh automatically)" }, // S_MSG_CREATE_DONE_SL
-    { L"²¿·ÖÈíÁ¬½Ó´´½¨Ê§°Ü£¬³£¼ûÔ­Òò£ºµ±Ç°ÕË»§Ã»ÓĞ SeCreateSymbolicLink È¨ÏŞ¡£\n½â¾ö°ì·¨£ºÓÒ¼ü¡¸ÒÔ¹ÜÀíÔ±Éí·İÔËĞĞ¡¹±¾³ÌĞò£»»òÔÚ Win10 ´´ÒâÕß¸üĞÂ¼°ÒÔÉÏÏµÍ³¿ªÆô¡¸¿ª·¢ÕßÄ£Ê½¡¹¡£", L"Some symlinks failed. Common cause: the current account lacks the SeCreateSymbolicLink privilege.\nFix: run this program as administrator, or enable Developer Mode on Windows 10 (1703+)." }, // S_MSG_SL_FAIL_HINT
-    { L"µ±Ç°ÏµÍ³²»Ö§³Ö´´½¨ÈíÁ¬½Ó£¨ĞèÒª Windows Vista ¼°ÒÔÉÏ£©¡£", L"This system cannot create symbolic links (Windows Vista or later required)." }, // S_MSG_SL_NO_SUPPORT
-    { L"(ÆäÖĞÍ¨¹ıÈ¨ÏŞ½Ó¹Ü·ÃÎÊ: %zu ¸ö)", L"(accessed via ownership takeover: %zu)" }, // S_ACL_COUNT_FMT
-    { L"×ÖºÅ", L"Size" },                                           // S_BTN_FONT
-    { L"Ğ¡£¨10 ºÅ×Ö£©", L"Small (10pt)" },                          // S_FONT_S
-    { L"±ê×¼£¨11 ºÅ×Ö£©", L"Standard (11pt)" },                     // S_FONT_M
-    { L"´ó£¨12 ºÅ×Ö£©", L"Large (12pt)" },                          // S_FONT_L
-    { L"ÌØ´ó£¨14 ºÅ×Ö£©", L"Extra (14pt)" },                        // S_FONT_XL
-    { L"´ò¿ª±¾×éËùÓĞÎÄ¼şÎ»ÖÃ", L"Open all locations in this group" }, // S_CTX_OPEN_GROUP
-    { L"ÉèÖÃ", L"Settings" },                                      // S_BTN_SETTINGS
+    { L"åˆ é™¤é‡å¤æ–‡ä»¶ç¡®è®¤", L"Delete Duplicates Confirmation" },                       // S_T_DELDUP
+    { L"åˆ é™¤å®Œæˆã€‚\n\nå·²é€å…¥å›æ”¶ç«™ï¼š%zu\nå¤±è´¥ï¼š%zu", L"Delete done.\n\nSent to Recycle Bin: %zu\nFailed: %zu" }, // S_MSG_DELDUP_DONE
+    { L"æ²¡æœ‰å¯åˆ é™¤çš„é‡å¤æ–‡ä»¶ï¼ˆå¯èƒ½ä»…å‰©å—ä¿æŠ¤è·¯å¾„é¡¹ï¼‰ã€‚", L"No duplicate files can be deleted (only protected paths remain)." }, // S_MSG_DELDUP_NONE
+    { L"å·²è·³è¿‡å—ä¿æŠ¤è·¯å¾„", L"Skipped protected paths" },                              // S_SKIPPED_PROTECTED
+    { L"ElegantHLK é‡å¤æ–‡ä»¶æ¸…å•", L"ElegantHLK Duplicate File List" },                // S_TXT_TITLE
+    { L"ç»„ %zuï¼ˆSHA256: %sï¼‰", L"Group %zu (SHA256: %s)" },                           // S_TXT_GROUP
+    { L"  [ä¿ç•™] %s", L"  [Keep] %s" },                                               // S_TXT_KEEP
+    { L"  [é‡å¤] %s", L"  [Dupe] %s" },                                               // S_TXT_DUP
+    { L"æç¤ºï¼šæ¯ç»„ä¿ç•™ç¬¬ 1 ä¸ªï¼Œå…¶ä½™ [é‡å¤] é¡¹å¯å®‰å…¨åˆ é™¤æˆ–è½¬æ¢ä¸ºç¡¬é“¾æ¥ã€‚", L"Hint: keep the 1st of each group; [Dupe] items can be safely deleted or converted to hardlinks." }, // S_TXT_HINT
+    { L"è·Ÿéšç³»ç»Ÿ", L"Follow System" },                                                // S_MENU_FOLLOW
+    { L"æµ…è‰²", L"Light" },                                                            // S_MENU_LIGHT
+    { L"æ·±è‰²", L"Dark" },                                                             // S_MENU_DARK
+    { L"è½¯è¿æ¥æ¨¡å¼", L"Symlink mode" },                                          // S_CHK_SLINK
+    { L"ä¸€é”®åˆ›å»ºè½¯è¿æ¥", L"Create Symlinks" },                                     // S_BTN_CREATE_SL
+    { L"å°†ä¸ºã€æ‰€æœ‰ã€‘é‡å¤æ–‡ä»¶åˆ›å»ºè½¯è¿æ¥ï¼ŒæŒ‡å‘æ¯ç»„ç¬¬ 1 ä¸ªæ–‡ä»¶ï¼ˆå¯è·¨ç›˜ç¬¦ï¼‰ã€‚\nè½¯è¿æ¥åªæ˜¯é“¾æ¥ï¼Œæºæ–‡ä»¶è¢«ç§»åŠ¨æˆ–åˆ é™¤åä¼šå¤±æ•ˆã€‚\n\nç¡®å®šç»§ç»­å—ï¼Ÿ", L"Will create symlinks for ALL duplicate files, each pointing to the 1st file of its group (works across volumes).\nA symlink breaks when the source file is moved or deleted.\n\nContinue?" }, // S_MSG_CONFIRM_ALL_SL
+    { L"å°†ä¸ºã€å‹¾é€‰ã€‘çš„é‡å¤æ–‡ä»¶åˆ›å»ºè½¯è¿æ¥ï¼ŒæŒ‡å‘æ¯ç»„ç¬¬ 1 ä¸ªæ–‡ä»¶ï¼ˆå¯è·¨ç›˜ç¬¦ï¼‰ã€‚\nè½¯è¿æ¥åªæ˜¯é“¾æ¥ï¼Œæºæ–‡ä»¶è¢«ç§»åŠ¨æˆ–åˆ é™¤åä¼šå¤±æ•ˆã€‚\n\nç»§ç»­ï¼Ÿ", L"Will create symlinks for the CHECKED duplicate files, each pointing to the 1st file of its group (works across volumes).\nA symlink breaks when the source file is moved or deleted.\n\nContinue?" }, // S_MSG_CONFIRM_SEL_SL
+    { L"è½¯è¿æ¥æ‰¹é‡åˆ›å»ºå®Œæˆï¼\n\næˆåŠŸåˆ›å»º: %zu ä¸ª\nå¤±è´¥: %zu ä¸ª\n\n(å³å°†è‡ªåŠ¨åˆ·æ–°ç›®å½•)", L"Batch symlink creation done!\n\nCreated: %zu\nFailed: %zu\n\n(The directory will refresh automatically)" }, // S_MSG_CREATE_DONE_SL
+    { L"éƒ¨åˆ†è½¯è¿æ¥åˆ›å»ºå¤±è´¥ï¼Œå¸¸è§åŸå› ï¼šå½“å‰è´¦æˆ·æ²¡æœ‰ SeCreateSymbolicLink æƒé™ã€‚\nè§£å†³åŠæ³•ï¼šå³é”®ã€Œä»¥ç®¡ç†å‘˜èº«ä»½è¿è¡Œã€æœ¬ç¨‹åºï¼›æˆ–åœ¨ Win10 åˆ›æ„è€…æ›´æ–°åŠä»¥ä¸Šç³»ç»Ÿå¼€å¯ã€Œå¼€å‘è€…æ¨¡å¼ã€ã€‚", L"Some symlinks failed. Common cause: the current account lacks the SeCreateSymbolicLink privilege.\nFix: run this program as administrator, or enable Developer Mode on Windows 10 (1703+)." }, // S_MSG_SL_FAIL_HINT
+    { L"å½“å‰ç³»ç»Ÿä¸æ”¯æŒåˆ›å»ºè½¯è¿æ¥ï¼ˆéœ€è¦ Windows Vista åŠä»¥ä¸Šï¼‰ã€‚", L"This system cannot create symbolic links (Windows Vista or later required)." }, // S_MSG_SL_NO_SUPPORT
+    { L"(å…¶ä¸­é€šè¿‡æƒé™æ¥ç®¡è®¿é—®: %zu ä¸ª)", L"(accessed via ownership takeover: %zu)" }, // S_ACL_COUNT_FMT
+    { L"å­—å·", L"Size" },                                           // S_BTN_FONT
+    { L"å°ï¼ˆ10 å·å­—ï¼‰", L"Small (10pt)" },                          // S_FONT_S
+    { L"æ ‡å‡†ï¼ˆ11 å·å­—ï¼‰", L"Standard (11pt)" },                     // S_FONT_M
+    { L"å¤§ï¼ˆ12 å·å­—ï¼‰", L"Large (12pt)" },                          // S_FONT_L
+    { L"ç‰¹å¤§ï¼ˆ14 å·å­—ï¼‰", L"Extra (14pt)" },                        // S_FONT_XL
+    { L"æ‰“å¼€æœ¬ç»„æ‰€æœ‰æ–‡ä»¶ä½ç½®", L"Open all locations in this group" }, // S_CTX_OPEN_GROUP
+    { L"è®¾ç½®", L"Settings" },                                      // S_BTN_SETTINGS
+    // v1.7ï¼šç¡¬é“¾æ¥æ˜ å°„è¡¨
+    { L"åŒæ­¥æ˜ å°„è¡¨", L"Sync Map" },                                  // S_BTN_SYNC_MAP
+    { L"ç¡¬é“¾æ¥æ˜ å°„è¡¨ (*.hlkm)\0*.hlkm\0æ‰€æœ‰æ–‡ä»¶\0*.*\0", L"Hardlink map (*.hlkm)\0*.hlkm\0All files\0*.*\0" }, // S_MAP_FILTER
+    { L"ElegantHLK-map.hlkm", L"ElegantHLK-map.hlkm" },              // S_MAP_DEFAULT_NAME
+    { L"æ˜ å°„è¡¨ä¸ºç©ºæˆ–æ ¼å¼ä¸æ­£ç¡®ã€‚", L"The map is empty or malformed." }, // S_MSG_SYNC_EMPTY
+    { L"æ˜ å°„è¡¨é‡Œçš„æ–‡ä»¶éƒ½ä¸å­˜åœ¨ï¼Œæ²¡æœ‰å¯åŒæ­¥çš„å†…å®¹ã€‚", L"None of the files in the map exist; nothing to sync." }, // S_MSG_SYNC_NONE
+    { L"æ˜ å°„åŒæ­¥å®Œæˆã€‚\n\nå·²é‡å»ºç¡¬é“¾æ¥ï¼š%zu\nè·¨å·å¤åˆ¶ï¼š%zu\nå·²æ˜¯åŒä¸€æ–‡ä»¶è·³è¿‡ï¼š%zu\nå¤±è´¥ï¼š%zu", L"Map sync complete.\n\nRelinked: %zu\nCopied across volumes: %zu\nAlready identical: %zu\nFailed: %zu" }, // S_MSG_SYNC_DONE
+    { L"åŒæ­¥å®Œæˆ", L"Sync Complete" },                                // S_T_SYNC
+    { L"\n\næ˜ å°„è¡¨å·²ä¿å­˜ï¼š\n%s", L"\n\nThe map was saved to:\n%s" },   // S_MSG_MAP_SAVED
+    { L"æ˜ å°„è¡¨", L"Hardlink Map" },                                   // S_T_MAP
+    { L"æ˜ å°„è¡¨å†™å…¥å¤±è´¥ï¼š\n%s", L"Failed to write the map:\n%s" },     // S_MSG_MAP_FAIL
 };
 
-int g_LangMode = 0; // 0=¸úËæÏµÍ³ 1=ÖĞÎÄ 2=English
-int g_Lang = 0;     // ½âÎö½á¹û£º0=zh 1=en
+int g_LangMode = 0; // 0=è·Ÿéšç³»ç»Ÿ 1=ä¸­æ–‡ 2=English
+int g_Lang = 0;     // è§£æç»“æœï¼š0=zh 1=en
 #define TR(id) (STR_TBL[id][g_Lang])
 
-// ===================== v1.2£ºÖçÒ¹Ö÷Ìâ£¨´¿ Win32 ÊµÏÖ£¬ÎŞĞÂÔö¼¼ÊõÕ»£©=====================
-int g_ThemeMode = 0;  // 0=¸úËæÏµÍ³ 1=Ç³É« 2=ÉîÉ«
+// ===================== v1.2ï¼šæ˜¼å¤œä¸»é¢˜ï¼ˆçº¯ Win32 å®ç°ï¼Œæ— æ–°å¢æŠ€æœ¯æ ˆï¼‰=====================
+int g_ThemeMode = 0;  // 0=è·Ÿéšç³»ç»Ÿ 1=æµ…è‰² 2=æ·±è‰²
 BOOL g_bDark = FALSE;
 HBRUSH g_hbrBg = NULL, g_hbrEdit = NULL;
-// --- º¯ÊıÉùÃ÷ ---
+// --- å‡½æ•°å£°æ˜ ---
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void CreateControls(HWND hwnd);
 void SetDefaultFont(HWND hwnd);
@@ -361,6 +378,8 @@ unsigned __stdcall CreateHardlinksThread(void* pArguments);
 void AddListItem(HWND hList, const wchar_t* col0, const wchar_t* col1, const wchar_t* col2, const wchar_t* col3, const wchar_t* col4, DWORD dwAttributes, const wchar_t* overridePath = NULL);
 void CopyToClipboard(HWND hwnd, const wchar_t* text);
 void ExportHardlinkList(HWND hwnd);
+BOOL WriteHardlinkMap(const std::vector<std::vector<std::wstring>>& groups, const wchar_t* path);
+void SyncFromHardlinkMap(HWND hwnd);
 int CALLBACK CompareFuncEx(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort);
 BOOL BreakHardlink(const wchar_t* filepath);
 void GetSafeFullPath(const wchar_t* dir, const wchar_t* file, wchar_t* outPath, size_t maxLen);
@@ -386,7 +405,7 @@ void DrawThemedButton(LPDRAWITEMSTRUCT dis);
 void DrawThemedMenuItem(LPDRAWITEMSTRUCT dis);
 void ApplyFontToUI(); // v1.5
 void OpenGroupLocations(HWND hwnd, int iItem); // v1.5
-// v1.3: ACL È¨ÏŞ¶µµ×£¨issue£º¼´±ãÌáÈ¨£¬ÈÔÓĞÊôÖ÷/DACL ¾Ü¾ø·ÃÎÊµÄÎÄ¼ş£©
+// v1.3: ACL æƒé™å…œåº•ï¼ˆissueï¼šå³ä¾¿ææƒï¼Œä»æœ‰å±ä¸»/DACL æ‹’ç»è®¿é—®çš„æ–‡ä»¶ï¼‰
 typedef struct {
     wchar_t path[2048];
     BOOL active;
@@ -438,12 +457,12 @@ LPARAM GetListViewParam(HWND hList, int iItem) {
 }
 
 void GetSafeFullPath(const wchar_t* dir, const wchar_t* file, wchar_t* outPath, size_t maxLen) {
-    size_t dl = wcslen(dir); // v1.3: ¿Õ´®·ÀÔ½½ç
+    size_t dl = wcslen(dir); // v1.3: ç©ºä¸²é˜²è¶Šç•Œ
     swprintf(outPath, maxLen, (dl > 0 && dir[dl - 1] == '\\') ? L"%s%s" : L"%s\\%s", dir, file);
 }
 
 BOOL CalculateFileSHA256(const wchar_t* filename, std::wstring& outHash) {
-    AclRestore acl; // v1.3: ACL ¶µµ×£¨ÎŞÈ¨ÏŞ¶ÁÊ±½Ó¹ÜºóÖØÊÔ£©
+    AclRestore acl; // v1.3: ACL å…œåº•ï¼ˆæ— æƒé™è¯»æ—¶æ¥ç®¡åé‡è¯•ï¼‰
     HANDLE hFile = OpenFileExAcl(filename, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_FLAG_SEQUENTIAL_SCAN, &acl);
     if (hFile == INVALID_HANDLE_VALUE) return FALSE;
 
@@ -475,7 +494,7 @@ BOOL CalculateFileSHA256(const wchar_t* filename, std::wstring& outHash) {
         CryptReleaseContext(hProv, 0);
     }
     CloseHandle(hFile);
-    AclRestoreAccess(&acl); // v1.3: Ö»¶Á´ò¿ª£¬¶ÔÏóÎ´±ä£¬Á¢¼´»¹Ô­
+    AclRestoreAccess(&acl); // v1.3: åªè¯»æ‰“å¼€ï¼Œå¯¹è±¡æœªå˜ï¼Œç«‹å³è¿˜åŸ
     return bResult;
 }
 
@@ -485,7 +504,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     g_hInst = hInstance;
     InitializeCriticalSection(&g_csParity);
     EnableDPIAwareness();
-    LoadSettings(); ApplyLanguage(); ApplyTheme(); // v1.2£ºÏÈ¶ÁÉèÖÃ£¬ÔÙ¶¨ÓïÑÔ/Ö÷Ìâ
+    LoadSettings(); ApplyLanguage(); ApplyTheme(); // v1.2ï¼šå…ˆè¯»è®¾ç½®ï¼Œå†å®šè¯­è¨€/ä¸»é¢˜
     HDC hdc = GetDC(NULL); g_DPI = GetDeviceCaps(hdc, LOGPIXELSX); ReleaseDC(NULL, hdc);
 
     Gdiplus::GdiplusStartupInput gdiplusStartupInput;
@@ -496,7 +515,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
 
     WNDCLASSEX wc = { sizeof(WNDCLASSEX) };
     wc.lpfnWndProc = WndProc; wc.hInstance = hInstance; wc.hCursor = LoadCursor(NULL, (LPCWSTR)IDC_ARROW);
-    wc.hbrBackground = g_hbrBg; // v1.2 Ö÷Ìâµ×É«
+    wc.hbrBackground = g_hbrBg; // v1.2 ä¸»é¢˜åº•è‰²
     wc.lpszClassName = L"ElegantHardlinkClass";
     RegisterClassEx(&wc);
 
@@ -528,7 +547,7 @@ int CALLBACK CompareFuncEx(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort) {
     BOOL isDir1 = (param1 & FILE_ATTRIBUTE_DIRECTORY) != 0;
     BOOL isDir2 = (param2 & FILE_ATTRIBUTE_DIRECTORY) != 0;
 
-    // ÎŞÂÛ°´ÄÄÒ»ÁĞÅÅĞò£¬ÎÄ¼ş¼ĞÓÅÏÈÂß¼­
+    // æ— è®ºæŒ‰å“ªä¸€åˆ—æ’åºï¼Œæ–‡ä»¶å¤¹ä¼˜å…ˆé€»è¾‘
     wchar_t name1[2048] = { 0 }, name2[2048] = { 0 };
     GetListViewSubItemText(hList, lParam1, 0, name1, 2048);
     GetListViewSubItemText(hList, lParam2, 0, name2, 2048);
@@ -588,9 +607,9 @@ bool IsAdvancedFiltered(const wchar_t* filename, LONGLONG fileSize) {
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
-    case WM_CREATE: g_hMainWnd = hwnd; CreateControls(hwnd); break; // v1.2£ºApplyTheme ĞèÒª¾¡ÔçÄÃµ½¾ä±ú
+    case WM_CREATE: g_hMainWnd = hwnd; CreateControls(hwnd); break; // v1.2ï¼šApplyTheme éœ€è¦å°½æ—©æ‹¿åˆ°å¥æŸ„
 
-    case WM_MEASUREITEM: { // v1.2 ÉîÉ«Ä£Ê½×Ô»æ²Ëµ¥£º²âÁ¿
+    case WM_MEASUREITEM: { // v1.2 æ·±è‰²æ¨¡å¼è‡ªç»˜èœå•ï¼šæµ‹é‡
         LPMEASUREITEMSTRUCT mis = (LPMEASUREITEMSTRUCT)lParam;
         if (mis->CtlType != ODT_MENU) return DefWindowProc(hwnd, uMsg, wParam, lParam);
         if (!mis->itemData) { mis->itemWidth = DPIScale(180); mis->itemHeight = DPIScale(7); return TRUE; }
@@ -604,14 +623,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         return TRUE;
     }
 
-    case WM_DRAWITEM: { // v1.2 ×Ô»æ°´Å¥ / ÉîÉ«²Ëµ¥
+    case WM_DRAWITEM: { // v1.2 è‡ªç»˜æŒ‰é’® / æ·±è‰²èœå•
         LPDRAWITEMSTRUCT dis = (LPDRAWITEMSTRUCT)lParam;
         if (dis->CtlType == ODT_BUTTON) { DrawThemedButton(dis); return TRUE; }
         if (dis->CtlType == ODT_MENU) { DrawThemedMenuItem(dis); return TRUE; }
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
 
-    case WM_CTLCOLORSTATIC: // v1.2 ÉîÉ«£º¾²Ì¬ÎÄ±¾
+    case WM_CTLCOLORSTATIC: // v1.2 æ·±è‰²ï¼šé™æ€æ–‡æœ¬
         if (g_bDark) {
             HDC hdcCtl = (HDC)wParam;
             SetTextColor(hdcCtl, RGB(235, 235, 235));
@@ -620,7 +639,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         }
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
 
-    case WM_CTLCOLOREDIT:   // v1.2 ÉîÉ«£ºÊäÈë¿ò / ÏÂÀ­¿ò
+    case WM_CTLCOLOREDIT:   // v1.2 æ·±è‰²ï¼šè¾“å…¥æ¡† / ä¸‹æ‹‰æ¡†
     case WM_CTLCOLORLISTBOX:
         if (g_bDark) {
             HDC hdcCtl = (HDC)wParam;
@@ -630,7 +649,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         }
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
 
-    case WM_SETTINGCHANGE: // v1.2 ¸úËæÏµÍ³£ºÏµÍ³Ö÷ÌâÇĞ»»Ê±×Ô¶¯ÖØ×ÅÉ«
+    case WM_SETTINGCHANGE: // v1.2 è·Ÿéšç³»ç»Ÿï¼šç³»ç»Ÿä¸»é¢˜åˆ‡æ¢æ—¶è‡ªåŠ¨é‡ç€è‰²
         if (g_ThemeMode == 0 && SystemDarkModeEnabled() != g_bDark) ApplyTheme();
         break;
 
@@ -660,7 +679,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         MoveWindow(g_hTxtSizeTo, cx - DPIScale(210), DPIScale(65), DPIScale(20), DPIScale(20), TRUE);
         MoveWindow(g_hEditSizeMax, cx - DPIScale(180), DPIScale(62), DPIScale(60), DPIScale(24), TRUE);
 
-        // v1.5: Ñ¡Ôñ°´Å¥À¸ºÍÁĞ±íÇøÓò¼ÆËã£¨×óÓÒ·ÖÀ¸¿ÉÍÏ×§£©
+        // v1.5: é€‰æ‹©æŒ‰é’®æ å’Œåˆ—è¡¨åŒºåŸŸè®¡ç®—ï¼ˆå·¦å³åˆ†æ å¯æ‹–æ‹½ï¼‰
         if (g_SplitX <= 0)
             g_SplitX = DPIScale(10) + ((cx - DPIScale(30)) * g_SplitPermille) / 1000;
         int minSplit = DPIScale(212);
@@ -668,8 +687,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         if (maxSplit < minSplit) maxSplit = minSplit;
         if (g_SplitX < minSplit) g_SplitX = minSplit;
         if (g_SplitX > maxSplit) g_SplitX = maxSplit;
-        int listW = g_SplitX - DPIScale(12);  // ×óÁĞ±í¿í£¨x ´Ó 10 Æğ£¬·Ö¸ô²ÛÓÒ²àÁô¿Õ£©
-        int rightX = g_SplitX + DPIScale(4);  // ÓÒÁĞ±íÆğµã
+        int listW = g_SplitX - DPIScale(12);  // å·¦åˆ—è¡¨å®½ï¼ˆx ä» 10 èµ·ï¼Œåˆ†éš”æ§½å³ä¾§ç•™ç©ºï¼‰
+        int rightX = g_SplitX + DPIScale(4);  // å³åˆ—è¡¨èµ·ç‚¹
         int rightW = cx - rightX - DPIScale(10);
         int listY = DPIScale(140);
         int listHeight = cy - listY - DPIScale(100);
@@ -685,7 +704,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         MoveWindow(g_hFileList, DPIScale(10), listY, listW, listHeight, TRUE);
         MoveWindow(g_hHardlinkList, rightX, listY, rightW, listHeight, TRUE);
 
-        // µ×²¿°´Å¥À¸
+        // åº•éƒ¨æŒ‰é’®æ 
         int btnY = cy - DPIScale(85);
         MoveWindow(g_hBtnRefresh, DPIScale(10), btnY, DPIScale(120), DPIScale(35), TRUE);
         MoveWindow(g_hBtnAnalyze, DPIScale(140), btnY, DPIScale(130), DPIScale(35), TRUE);
@@ -739,7 +758,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 }
             }
         }
-        // v1.5: µã»÷¸´Ñ¡¿òµÄĞĞ±£³Ö/µş¼ÓÑ¡ÖĞ¸ßÁÁ£¬¹´¹ıµÄĞĞ²»ÔÙ"µãÍê¾ÍÍÊÉ«"
+        // v1.5: ç‚¹å‡»å¤é€‰æ¡†çš„è¡Œä¿æŒ/å åŠ é€‰ä¸­é«˜äº®ï¼Œå‹¾è¿‡çš„è¡Œä¸å†"ç‚¹å®Œå°±è¤ªè‰²"
         if ((lpnmh->idFrom == ID_LIST_FILE || lpnmh->idFrom == ID_LIST_HARDLINK) && lpnmh->code == NM_CLICK) {
             LPNMITEMACTIVATE pnma = (LPNMITEMACTIVATE)lParam;
             LVHITTESTINFO hti = { 0 };
@@ -747,7 +766,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             if (pnma->iItem >= 0 && ListView_SubItemHitTest(pnma->hdr.hwndFrom, &hti) >= 0 && (hti.flags & LVHT_ONITEMSTATEICON))
                 ListView_SetItemState(pnma->hdr.hwndFrom, pnma->iItem, LVIS_SELECTED, LVIS_SELECTED);
         }
-        // v1.5: ÓÒ²àÁĞ±íË«»÷ = ´ò¿ª¸ÃÖØ¸´×éËùÓĞÎÄ¼şËùÔÚÎ»ÖÃ
+        // v1.5: å³ä¾§åˆ—è¡¨åŒå‡» = æ‰“å¼€è¯¥é‡å¤ç»„æ‰€æœ‰æ–‡ä»¶æ‰€åœ¨ä½ç½®
         if (lpnmh->idFrom == ID_LIST_HARDLINK && lpnmh->code == NM_DBLCLK) {
             LPNMITEMACTIVATE pnmd = (LPNMITEMACTIVATE)lParam;
             if (pnmd->iItem >= 0) OpenGroupLocations(hwnd, pnmd->iItem);
@@ -774,7 +793,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
             SendMessage(hList, LVM_SORTITEMSEX, (WPARAM)hList, (LPARAM)CompareFuncEx);
         }
-        // v1.2 ÉîÉ«Ä£Ê½£ºÁĞ±í±íÍ·×Ô»æ¶µµ×£¨ĞÂÏµÍ³ÓÉ DarkMode_Explorer Ö÷Ìâ´¦Àí£©
+        // v1.2 æ·±è‰²æ¨¡å¼ï¼šåˆ—è¡¨è¡¨å¤´è‡ªç»˜å…œåº•ï¼ˆæ–°ç³»ç»Ÿç”± DarkMode_Explorer ä¸»é¢˜å¤„ç†ï¼‰
         if (g_bDark && lpnmh->code == NM_CUSTOMDRAW &&
             (lpnmh->hwndFrom == ListView_GetHeader(g_hFileList) || lpnmh->hwndFrom == ListView_GetHeader(g_hHardlinkList))) {
             LPNMCUSTOMDRAW phdc = (LPNMCUSTOMDRAW)lParam;
@@ -812,7 +831,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 else if (bReadOnly) lplvcd->clrText = g_bDark ? RGB(115, 170, 255) : RGB(0, 0, 255);
                 else lplvcd->clrText = g_bDark ? RGB(235, 235, 235) : RGB(0, 0, 0);
 
-                // ÓÒ²àÖØ¸´ÁĞ±í£ºÍ¬Ò» SHA256 ×éÓÃ½»Ìæµ×É«£¬·½±ãÇø·ÖL"ÄÄ¼¸ĞĞÊÇÒ»»ïµÄ"
+                // å³ä¾§é‡å¤åˆ—è¡¨ï¼šåŒä¸€ SHA256 ç»„ç”¨äº¤æ›¿åº•è‰²ï¼Œæ–¹ä¾¿åŒºåˆ†L"å“ªå‡ è¡Œæ˜¯ä¸€ä¼™çš„"
                 if (lpnmh->idFrom == ID_LIST_HARDLINK) {
                     wchar_t sha[128] = { 0 };
                     GetListViewSubItemText(g_hHardlinkList, (int)lplvcd->nmcd.dwItemSpec, 3, sha, _countof(sha));
@@ -827,7 +846,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 return CDRF_NEWFONT;
             }
         }
-        // v1.3: ¶àÑ¡ÔöÇ¿¡ª¡ªShift µãÊ×Î²°Ñ·¶Î§ÄÚÈ«¹´/È«²»¹´£¨ÒÔÃªµãĞĞ¹´Ñ¡Ì¬Îª×¼£©£¬Ctrl µ¥¸ö¹´/È¡Ïû
+        // v1.3: å¤šé€‰å¢å¼ºâ€”â€”Shift ç‚¹é¦–å°¾æŠŠèŒƒå›´å†…å…¨å‹¾/å…¨ä¸å‹¾ï¼ˆä»¥é”šç‚¹è¡Œå‹¾é€‰æ€ä¸ºå‡†ï¼‰ï¼ŒCtrl å•ä¸ªå‹¾/å–æ¶ˆ
         if ((lpnmh->idFrom == ID_LIST_FILE || lpnmh->idFrom == ID_LIST_HARDLINK) && lpnmh->code == LVN_ITEMCHANGED) {
             LPNMLISTVIEW pnmv = (LPNMLISTVIEW)lParam;
             if ((pnmv->uChanged & LVIF_STATE) && (pnmv->uNewState & LVIS_SELECTED) && !(pnmv->uOldState & LVIS_SELECTED)) {
@@ -840,7 +859,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                         int lo = (anchor < pnmv->iItem) ? anchor : pnmv->iItem;
                         int hi = (anchor < pnmv->iItem) ? pnmv->iItem : anchor;
                         BOOL mark = ListView_GetCheckState(hList, anchor);
-                        s_bRangeBusy = TRUE; // ÅúÁ¿¹´Ñ¡»á´¥·¢Ç¶Ì×Í¨Öª£¬ÓÃ±ê¼Ç¶ÌÂ·
+                        s_bRangeBusy = TRUE; // æ‰¹é‡å‹¾é€‰ä¼šè§¦å‘åµŒå¥—é€šçŸ¥ï¼Œç”¨æ ‡è®°çŸ­è·¯
                         for (int i = lo; i <= hi; i++)
                             ListView_SetItemState(hList, i, INDEXTOSTATEIMAGEMASK(mark ? 2 : 1), LVIS_STATEIMAGEMASK);
                         s_bRangeBusy = FALSE;
@@ -904,7 +923,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 SendMessage(g_hProgressBar, PBM_SETPOS, 0, 0);
                 SendMessage(g_hFileList, LVM_DELETEALLITEMS, 0, 0);
                 SendMessage(g_hHardlinkList, LVM_DELETEALLITEMS, 0, 0);
-                g_AnchorL = g_AnchorR = -1; // v1.3: ÁĞ±íÇå¿ÕºóÃªµã¸´Î»
+                g_AnchorL = g_AnchorR = -1; // v1.3: åˆ—è¡¨æ¸…ç©ºåé”šç‚¹å¤ä½
                 SetWindowText(g_hBtnRefresh, TR(S_STOP_SCAN));
                 { HANDLE hT = (HANDLE)_beginthreadex(NULL, 0, ScanDirectoryThread, NULL, 0, NULL); if (hT) CloseHandle(hT); }
                 break;
@@ -943,7 +962,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
                 SendMessage(g_hProgressBar, PBM_SETPOS, 0, 0);
                 SendMessage(g_hHardlinkList, LVM_DELETEALLITEMS, 0, 0);
-                g_AnchorL = g_AnchorR = -1; // v1.3: ÁĞ±íÇå¿ÕºóÃªµã¸´Î»
+                g_AnchorL = g_AnchorR = -1; // v1.3: åˆ—è¡¨æ¸…ç©ºåé”šç‚¹å¤ä½
                 SetWindowText(g_hBtnAnalyze, TR(S_STOP_ANALYZE));
                 { HANDLE hT = (HANDLE)_beginthreadex(NULL, 0, AnalyzeDirectoryThread, NULL, 0, NULL); if (hT) CloseHandle(hT); }
                 break;
@@ -960,7 +979,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                     break;
                 }
 
-                // ÅĞ¶ÏÊÇ·ñÓĞ¹´Ñ¡Ïî
+                // åˆ¤æ–­æ˜¯å¦æœ‰å‹¾é€‰é¡¹
                 int checkedCount = 0;
                 for (int i = 0; i < itemCount; i++) {
                     if (ListView_GetCheckState(g_hHardlinkList, i)) checkedCount++;
@@ -983,7 +1002,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 }
                 else {
                     if (checkedCount == 0) {
-                        // v1.3: ÈíÁ¬½ÓÄ£Ê½ÓÃ×¨ÃÅÈ·ÈÏÎÄ°¸£¬ËµÃ÷ÈíÁ¬½ÓÓïÒå
+                        // v1.3: è½¯è¿æ¥æ¨¡å¼ç”¨ä¸“é—¨ç¡®è®¤æ–‡æ¡ˆï¼Œè¯´æ˜è½¯è¿æ¥è¯­ä¹‰
                         if (MessageBox(hwnd, g_bSlinkMode ? TR(S_MSG_CONFIRM_ALL_SL) : TR(S_MSG_CONFIRM_ALL), TR(S_T_CONFIRM_ALL), MB_YESNO | MB_ICONWARNING) != IDYES) break;
                     }
                     else {
@@ -991,12 +1010,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                     }
                 }
 
-                // v1.3: XP µÈÏµÍ³Ã»ÓĞÈíÁ¬½Ó API£¬ÌáÇ°À¹½Ø
+                // v1.3: XP ç­‰ç³»ç»Ÿæ²¡æœ‰è½¯è¿æ¥ APIï¼Œæå‰æ‹¦æˆª
                 if (g_bSlinkMode && !GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "CreateSymbolicLinkW")) {
                     MessageBox(hwnd, TR(S_MSG_SL_NO_SUPPORT), TR(S_T_ERROR), MB_OK | MB_ICONERROR);
                     break;
                 }
 
+                g_szLastMapPath[0] = L'\0'; // v1.7ï¼šæ–°ä¸€è½®åˆ›å»ºå‰æ¸…æ‰ä¸Šä¸€ä»½æ˜ å°„è·¯å¾„
                 g_bScanning = TRUE; g_bCancelAnalysis = FALSE;
                 SetWindowText(g_hBtnCreate, TR(S_STOP_CREATE));
                 { HANDLE hT = (HANDLE)_beginthreadex(NULL, 0, CreateHardlinksThread, NULL, 0, NULL); if (hT) CloseHandle(hT); }
@@ -1004,11 +1024,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             }
 
             case ID_BTN_EXPORT_R: ExportHardlinkList(hwnd); break;
+            case ID_BTN_SYNC_MAP: SyncFromHardlinkMap(hwnd); break; // v1.7
             case ID_BTN_DELETE_DUPS: DoDeleteDuplicates(hwnd); break;
-            case ID_BTN_SETTINGS: { // ÉèÖÃ£ºÓïÑÔ / Ö÷Ìâ / ×ÖºÅ ¼¶Áª²Ëµ¥
+            case ID_BTN_SETTINGS: { // è®¾ç½®ï¼šè¯­è¨€ / ä¸»é¢˜ / å­—å· çº§è”èœå•
                 HMENU hLangMenu = CreatePopupMenu();
                 AppendThemedItem(hLangMenu, IDM_LANG_AUTO, TR(S_MENU_FOLLOW));
-                AppendThemedItem(hLangMenu, IDM_LANG_ZH, L"ÖĞÎÄ");
+                AppendThemedItem(hLangMenu, IDM_LANG_ZH, L"ä¸­æ–‡");
                 AppendThemedItem(hLangMenu, IDM_LANG_EN, L"English");
                 CheckMenuRadioItem(hLangMenu, IDM_LANG_AUTO, IDM_LANG_EN, IDM_LANG_AUTO + g_LangMode, MF_BYCOMMAND);
                 HMENU hThemeMenu = CreatePopupMenu();
@@ -1060,10 +1081,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 RegSetDword(L"Theme", (DWORD)g_ThemeMode);
                 ApplyTheme();
                 break;
-            case IDM_OPEN_GROUP: // v1.5: ´ò¿ª±¾×éËùÓĞÎÄ¼şÎ»ÖÃ
+            case IDM_OPEN_GROUP: // v1.5: æ‰“å¼€æœ¬ç»„æ‰€æœ‰æ–‡ä»¶ä½ç½®
                 if (isHardlinkList && selIdx != -1) OpenGroupLocations(hwnd, selIdx);
                 break;
-            case IDM_FONT_S: case IDM_FONT_M: case IDM_FONT_L: case IDM_FONT_XL: { // v1.5: ×ÖºÅ
+            case IDM_FONT_S: case IDM_FONT_M: case IDM_FONT_L: case IDM_FONT_XL: { // v1.5: å­—å·
                 static const int s_ptVals[4] = { 10, 11, 12, 14 };
                 int fIdx = (int)(LOWORD(wParam)) - IDM_FONT_S;
                 if (fIdx >= 0 && fIdx < 4) {
@@ -1145,7 +1166,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         BOOL bCancelled = (BOOL)lParam; size_t count = (size_t)wParam;
         if (bCancelled) MessageBox(hwnd, TR(S_MSG_ANALYZE_CANCELLED), TR(S_T_TIP), MB_OK | MB_ICONINFORMATION);
         else {
-            wchar_t msg[800]; // v1.3: ¿ÉÄÜÆ´½ÓÈ¨ÏŞ½Ó¹ÜÍ³¼Æ
+            wchar_t msg[800]; // v1.3: å¯èƒ½æ‹¼æ¥æƒé™æ¥ç®¡ç»Ÿè®¡
             swprintf(msg, _countof(msg),
                 TR(S_MSG_ANALYZE_DONE),
                 g_StatGroupCount, g_StatDupFileCount, count, totalBuf, dElapsed);
@@ -1170,8 +1191,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         size_t successCount = (size_t)wParam;
         size_t failCount = (size_t)lParam;
 
-        wchar_t msg[1600]; // v1.3: ÈíÁ¬½ÓÄ£Ê½¿ÉÄÜÆ´½ÓÊ§°ÜÔ­ÒòÌáÊ¾
+        wchar_t msg[1600]; // v1.3: è½¯è¿æ¥æ¨¡å¼å¯èƒ½æ‹¼æ¥å¤±è´¥åŸå› æç¤º
         swprintf(msg, _countof(msg), g_bSlinkMode ? TR(S_MSG_CREATE_DONE_SL) : TR(S_MSG_CREATE_DONE), successCount, failCount);
+        if (!g_bSlinkMode && g_szLastMapPath[0]) { // v1.7ï¼šç¡¬é“¾æ¥å»ºå¥½åé™„å¸¦æ˜ å°„è¡¨ä½ç½®
+            wchar_t mapLine[2200];
+            swprintf(mapLine, _countof(mapLine), TR(S_MSG_MAP_SAVED), g_szLastMapPath);
+            lstrcat(msg, mapLine);
+        }
         if (g_nAclFixed > 0) {
             wchar_t aclLine[224];
             swprintf(aclLine, _countof(aclLine), TR(S_ACL_COUNT_FMT), (size_t)g_nAclFixed);
@@ -1213,7 +1239,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         DragFinish(hDrop);
         break;
     }
-    case WM_SETCURSOR: // ĞüÍ£·ÖÀ¸Ïß±ä×óÓÒ¼ıÍ·£¨ÑÏ¸ñÏŞ¶¨ÔÚ×óÓÒÁĞ±íµÄ¸ß¶È·¶Î§ÄÚ£¬²»Ó°ÏìÉÏ·½±à¼­¿òµÈ¿Ø¼ş£©
+    case WM_SETCURSOR: // æ‚¬åœåˆ†æ çº¿å˜å·¦å³ç®­å¤´ï¼ˆä¸¥æ ¼é™å®šåœ¨å·¦å³åˆ—è¡¨çš„é«˜åº¦èŒƒå›´å†…ï¼Œä¸å½±å“ä¸Šæ–¹ç¼–è¾‘æ¡†ç­‰æ§ä»¶ï¼‰
         if (LOWORD(lParam) == HTCLIENT && g_SplitX > 0) {
             POINT spt; GetCursorPos(&spt); ScreenToClient(hwnd, &spt);
             RECT crc; GetClientRect(hwnd, &crc);
@@ -1226,7 +1252,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         }
         return DefWindowProcW(hwnd, uMsg, wParam, lParam);
 
-    case WM_LBUTTONDOWN: // ÃüÖĞ·ÖÀ¸Ïß¿ªÊ¼ÍÏ×§£¨Í¬Ñù½öÏŞÁĞ±íÇøÓò¸ß¶ÈÄÚ£©
+    case WM_LBUTTONDOWN: // å‘½ä¸­åˆ†æ çº¿å¼€å§‹æ‹–æ‹½ï¼ˆåŒæ ·ä»…é™åˆ—è¡¨åŒºåŸŸé«˜åº¦å†…ï¼‰
         if (g_SplitX > 0) {
             RECT crc; GetClientRect(hwnd, &crc);
             int y = (int)(short)HIWORD(lParam);
@@ -1237,7 +1263,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         }
         break;
 
-    case WM_MOUSEMOVE: // v1.5: ÍÏ×§ÖĞÊµÊ±ÖØÅÅ
+    case WM_MOUSEMOVE: // v1.5: æ‹–æ‹½ä¸­å®æ—¶é‡æ’
         if (g_bDragSplit && GetCapture() == hwnd) {
             RECT crc; GetClientRect(hwnd, &crc);
             g_SplitX = (int)(short)LOWORD(lParam);
@@ -1246,7 +1272,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         }
         break;
 
-    case WM_LBUTTONUP: // v1.5: ½áÊøÍÏ×§²¢¼Ç×¡·ÖÀ¸±ÈÀı
+    case WM_LBUTTONUP: // v1.5: ç»“æŸæ‹–æ‹½å¹¶è®°ä½åˆ†æ æ¯”ä¾‹
         if (g_bDragSplit) {
             g_bDragSplit = FALSE;
             if (GetCapture() == hwnd) ReleaseCapture();
@@ -1261,9 +1287,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         }
         break;
 
-    case WM_PAINT: { // v1.5: »­·ÖÀ¸·Ö¸ô²Û
+    case WM_PAINT: { // v1.5: ç”»åˆ†æ åˆ†éš”æ§½
         PAINTSTRUCT ps; HDC hdc = BeginPaint(hwnd, &ps);
-        if (g_SplitX > 0) { // ·Ö¸ô²ÛÍ¬ÑùÖ»»­µ½ÁĞ±íÇøÓò¸ß¶È
+        if (g_SplitX > 0) { // åˆ†éš”æ§½åŒæ ·åªç”»åˆ°åˆ—è¡¨åŒºåŸŸé«˜åº¦
             RECT grc = { g_SplitX - DPIScale(2), DPIScale(140), g_SplitX + DPIScale(2), ps.rcPaint.bottom - DPIScale(100) };
             HBRUSH hbr = CreateSolidBrush(g_bDark ? RGB(70, 70, 70) : RGB(204, 204, 204));
             FillRect(hdc, &grc, hbr); DeleteObject(hbr);
@@ -1304,7 +1330,7 @@ unsigned __stdcall ScanDirectoryThread(void* pArguments) {
             if (isDir) { AddListItem(g_hFileList, fd.cFileName, L"", TR(S_FOLDER), L"", NULL, fd.dwFileAttributes); continue; }
 
             wchar_t fullPath[2048]; GetSafeFullPath(g_CurrentPath, fd.cFileName, fullPath, 2048);
-            AclRestore acl; // v1.3: ACL ¶µµ×
+            AclRestore acl; // v1.3: ACL å…œåº•
             HANDLE hFile = OpenFileExAcl(fullPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, &acl);
             if (hFile != INVALID_HANDLE_VALUE) {
                 BY_HANDLE_FILE_INFORMATION fileInfo;
@@ -1317,7 +1343,7 @@ unsigned __stdcall ScanDirectoryThread(void* pArguments) {
                     else AddListItem(g_hFileList, fd.cFileName, sizeStr, infoStr, hlFlag, NULL, fd.dwFileAttributes);
                 }
                 CloseHandle(hFile);
-                AclRestoreAccess(&acl); // v1.3: Ö»¶Á´ò¿ª£¬Á¢¼´»¹Ô­
+                AclRestoreAccess(&acl); // v1.3: åªè¯»æ‰“å¼€ï¼Œç«‹å³è¿˜åŸ
             }
             else AddListItem(g_hFileList, fd.cFileName, sizeStr, TR(S_NO_PERM), L"", NULL, fd.dwFileAttributes);
         } while (FindNextFile(hFind, &fd));
@@ -1340,7 +1366,7 @@ void CollectFilesRecursively(const std::wstring& folder, std::vector<FileNode>& 
         do {
             if (g_bCancelAnalysis) break;
             if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
-            // v1.3: Ìø¹ıÈíÁ¬½Ó£¨Á´½Ó²»ÊÇÖØ¸´Êı¾İ±¾Ìå£¬Ò²±ÜÃâ¸ú×ÅÁ´½Ó½øËÀÑ­»·£©
+            // v1.3: è·³è¿‡è½¯è¿æ¥ï¼ˆé“¾æ¥ä¸æ˜¯é‡å¤æ•°æ®æœ¬ä½“ï¼Œä¹Ÿé¿å…è·Ÿç€é“¾æ¥è¿›æ­»å¾ªç¯ï¼‰
             if ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && fd.dwReserved0 == IO_REPARSE_TAG_SYMLINK) continue;
             wchar_t fullPath[2048]; GetSafeFullPath(folder.c_str(), fd.cFileName, fullPath, 2048);
 
@@ -1396,7 +1422,7 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
     size_t totalHardlinksToCreate = 0;
 
     if (!g_bCancelAnalysis) {
-        std::map<LONGLONG, std::vector<size_t>> sizeMap; // v1.3: ´æÏÂ±ê´úÌæ¿½±´ FileNode£¬´óÄ¿Â¼¸üÊ¡ÄÚ´æ
+        std::map<LONGLONG, std::vector<size_t>> sizeMap; // v1.3: å­˜ä¸‹æ ‡ä»£æ›¿æ‹·è´ FileNodeï¼Œå¤§ç›®å½•æ›´çœå†…å­˜
         for (size_t i = 0; i < allFiles.size(); ++i) {
             if (g_bCancelAnalysis) break;
             if (allFiles[i].size.QuadPart > 0) sizeMap[allFiles[i].size.QuadPart].push_back(i);
@@ -1412,7 +1438,7 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
         for (std::map<LONGLONG, std::vector<size_t>>::iterator it = sizeMap.begin(); it != sizeMap.end(); ++it) {
             if (g_bCancelAnalysis) break;
             if (it->second.size() > 1) {
-                std::map<std::wstring, std::vector<size_t>> hashMap; // v1.3: Í¬ÑùÖ»´æÏÂ±ê
+                std::map<std::wstring, std::vector<size_t>> hashMap; // v1.3: åŒæ ·åªå­˜ä¸‹æ ‡
                 for (size_t i = 0; i < it->second.size(); ++i) {
                     if (g_bCancelAnalysis) break;
                     FileNode& fn = allFiles[it->second[i]];
@@ -1432,12 +1458,12 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
                     if (g_bCancelAnalysis) break;
                     if (hit->second.size() > 1) {
 
-                        // v1.3: ´ò¿ªÒ»´ÎÍ¬Ê±ÄÃÎÄ¼ş ID ÓëÁ´½ÓÊı£¬ÏÂÃæÕ¹Ê¾½×¶Î²»ÔÙÖğ¸öÖØ¿ª
+                        // v1.3: æ‰“å¼€ä¸€æ¬¡åŒæ—¶æ‹¿æ–‡ä»¶ ID ä¸é“¾æ¥æ•°ï¼Œä¸‹é¢å±•ç¤ºé˜¶æ®µä¸å†é€ä¸ªé‡å¼€
                         std::map<ULONGLONG, int> physicalFiles;
                         std::vector<DWORD> linksOf(hit->second.size(), 0);
                         for (size_t k = 0; k < hit->second.size(); ++k) {
                             FileNode& fn = allFiles[hit->second[k]];
-                            AclRestore acl; // v1.3: ACL ¶µµ×
+                            AclRestore acl; // v1.3: ACL å…œåº•
                             HANDLE hFile = OpenFileExAcl(fn.fullPath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, &acl);
                             if (hFile != INVALID_HANDLE_VALUE) {
                                 BY_HANDLE_FILE_INFORMATION fi;
@@ -1460,7 +1486,7 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
                             g_llTotalSavedSpace += savedSpace;
                         }
 
-                        // Í³¼Æ£º±¾×éËã 1 ¸öÖØ¸´×é£¬×éÄÚÎÄ¼ş¼ÆÈëÖØ¸´ÎÄ¼şÊı£»·ÖÅä½»Ìæµ×É«
+                        // ç»Ÿè®¡ï¼šæœ¬ç»„ç®— 1 ä¸ªé‡å¤ç»„ï¼Œç»„å†…æ–‡ä»¶è®¡å…¥é‡å¤æ–‡ä»¶æ•°ï¼›åˆ†é…äº¤æ›¿åº•è‰²
                         EnterCriticalSection(&g_csParity);
                         g_GroupParity[hit->first] = (int)(g_StatGroupCount & 1);
                         LeaveCriticalSection(&g_csParity);
@@ -1475,7 +1501,7 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
                             wchar_t status[128]; swprintf(status, _countof(status), TR(S_DUP_FMT), hit->second.size());
 
                             wchar_t hlFlag[8] = L"0";
-                            if (linksOf[k] > 1) wcscpy(hlFlag, L"1"); // v1.3: ¸´ÓÃÉÏÃæ¼ÇÂ¼µÄÁ´½ÓÊı£¬²»ÔÙÖØ¿ªÎÄ¼ş
+                            if (linksOf[k] > 1) wcscpy(hlFlag, L"1"); // v1.3: å¤ç”¨ä¸Šé¢è®°å½•çš„é“¾æ¥æ•°ï¼Œä¸å†é‡å¼€æ–‡ä»¶
 
                             AddListItem(g_hHardlinkList, fn.fullPath.c_str(), status, szSaved, hit->first.c_str(), hlFlag, fn.attr, fn.fullPath.c_str());
                         }
@@ -1495,7 +1521,7 @@ unsigned __stdcall AnalyzeDirectoryThread(void* pArguments) {
     return 0;
 }
 
-// v1.3: ½¨ÈíÁ¬½Ó¡£Vista+ ²ÅÓĞ´Ë API£¬¶¯Ì¬¼ÓÔØ±£Ö¤ XP ÉÏ°²È«·µ»ØÊ§°Ü
+// v1.3: å»ºè½¯è¿æ¥ã€‚Vista+ æ‰æœ‰æ­¤ APIï¼ŒåŠ¨æ€åŠ è½½ä¿è¯ XP ä¸Šå®‰å…¨è¿”å›å¤±è´¥
 static BOOL CreateSymbolicLinkSmart(const wchar_t* linkPath, const wchar_t* targetPath) {
     typedef BOOLEAN (WINAPI *CSL_T)(const wchar_t*, const wchar_t*, DWORD);
     static CSL_T pCsl = NULL;
@@ -1508,14 +1534,189 @@ static BOOL CreateSymbolicLinkSmart(const wchar_t* linkPath, const wchar_t* targ
     if (pCsl(linkPath, targetPath, 0)) return TRUE;
     DWORD err = GetLastError();
     if (err == ERROR_INVALID_FUNCTION || err == ERROR_PRIVILEGE_NOT_HELD) {
-        // Win10 1703+ ¿ª·¢ÕßÄ£Ê½¿ÉÃâÌáÈ¨´´½¨
+        // Win10 1703+ å¼€å‘è€…æ¨¡å¼å¯å…ææƒåˆ›å»º
         if (pCsl(linkPath, targetPath, SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE)) return TRUE;
     }
     return FALSE;
 }
 
+// ===================== v1.7ï¼šç¡¬é“¾æ¥æ˜ å°„è¡¨ï¼ˆè®°å½•åŒä¸€ç»„ç¡¬é“¾æ¥è·¯å¾„ï¼Œæ›´æ–°åæŒ‰è¡¨åŒæ­¥ï¼‰=====================
+namespace {
+
+bool ReadWholeFileW(const wchar_t* path, std::string& out) {
+    HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    char buf[65536];
+    DWORD got = 0;
+    while (ReadFile(h, buf, sizeof(buf), &got, NULL) && got > 0) out.append(buf, got);
+    CloseHandle(h);
+    return true;
+}
+
+bool SameFileIdentity(const wchar_t* a, const wchar_t* b) {
+    HANDLE ha = CreateFileW(a, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                            NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    HANDLE hb = CreateFileW(b, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                            NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    if (ha == INVALID_HANDLE_VALUE || hb == INVALID_HANDLE_VALUE) {
+        if (ha != INVALID_HANDLE_VALUE) CloseHandle(ha);
+        if (hb != INVALID_HANDLE_VALUE) CloseHandle(hb);
+        return false;
+    }
+    BY_HANDLE_FILE_INFORMATION ia = { 0 }, ib = { 0 };
+    BOOL ok = GetFileInformationByHandle(ha, &ia) && GetFileInformationByHandle(hb, &ib) &&
+              ia.dwVolumeSerialNumber == ib.dwVolumeSerialNumber &&
+              ia.nFileIndexHigh == ib.nFileIndexHigh && ia.nFileIndexLow == ib.nFileIndexLow;
+    CloseHandle(ha); CloseHandle(hb);
+    return ok != FALSE;
+}
+
+bool SameVolume(const wchar_t* a, const wchar_t* b) {
+    wchar_t ra[MAX_PATH] = { 0 }, rb[MAX_PATH] = { 0 };
+    if (!GetVolumePathNameW(a, ra, MAX_PATH) || !GetVolumePathNameW(b, rb, MAX_PATH)) return false;
+    return lstrcmpiW(ra, rb) == 0;
+}
+
+} // namespace
+
+BOOL WriteHardlinkMap(const std::vector<std::vector<std::wstring>>& groups, const wchar_t* path) {
+    std::wstring text;
+    text += L"# ElegantHLK hardlink map v1\r\n";
+    text += L"# æ¯ç»„ç¬¬ä¸€è¡Œæ˜¯ä¿ç•™æ–‡ä»¶ï¼Œå…¶ä½™è¡Œæ˜¯ç¡¬é“¾æ¥å‰¯æœ¬ï¼›ç»„é—´ä»¥ç©ºè¡Œåˆ†éš”ã€‚\r\n";
+    for (size_t i = 0; i < groups.size(); ++i) {
+        for (size_t j = 0; j < groups[i].size(); ++j) {
+            text += groups[i][j];
+            text += L"\r\n";
+        }
+        text += L"\r\n";
+    }
+
+    int need = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), (int)text.size(), NULL, 0, NULL, NULL);
+    if (need <= 0) return FALSE;
+    std::string bytes;
+    bytes.resize((size_t)need + 3);
+    bytes[0] = (char)0xEF; bytes[1] = (char)0xBB; bytes[2] = (char)0xBF;
+    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), (int)text.size(), &bytes[3], need, NULL, NULL);
+
+    HANDLE h = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) return FALSE;
+    DWORD written = 0;
+    BOOL ok = WriteFile(h, bytes.data(), (DWORD)bytes.size(), &written, NULL) && written == bytes.size();
+    CloseHandle(h);
+    return ok;
+}
+
+void SyncFromHardlinkMap(HWND hwnd) {
+    wchar_t file[2048] = { 0 };
+    OPENFILENAMEW ofn = { 0 };
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFilter = TR(S_MAP_FILTER);
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = (DWORD)_countof(file);
+    ofn.lpstrDefExt = L"hlkm";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetOpenFileNameW(&ofn)) return;
+
+    std::string raw;
+    if (!ReadWholeFileW(file, raw)) {
+        MessageBox(hwnd, TR(S_MSG_SYNC_EMPTY), TR(S_T_MAP), MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    std::wstring text;
+    if (raw.size() >= 2 && (unsigned char)raw[0] == 0xFF && (unsigned char)raw[1] == 0xFE) {
+        size_t chars = (raw.size() - 2) / sizeof(wchar_t);
+        text.resize(chars);
+        if (chars) memcpy(&text[0], raw.data() + 2, chars * sizeof(wchar_t));
+    } else {
+        size_t start = 0;
+        if (raw.size() >= 3 && (unsigned char)raw[0] == 0xEF && (unsigned char)raw[1] == 0xBB && (unsigned char)raw[2] == 0xBF) start = 3;
+        int need = MultiByteToWideChar(CP_UTF8, 0, raw.data() + start, (int)(raw.size() - start), NULL, 0);
+        if (need > 0) {
+            text.resize((size_t)need);
+            MultiByteToWideChar(CP_UTF8, 0, raw.data() + start, (int)(raw.size() - start), &text[0], need);
+        }
+    }
+
+    std::vector<std::vector<std::wstring>> groups;
+    std::vector<std::wstring> current;
+    size_t pos = 0;
+    while (pos <= text.size()) {
+        size_t end = text.find(L'\n', pos);
+        std::wstring line = text.substr(pos, end == std::wstring::npos ? std::wstring::npos : end - pos);
+        if (!line.empty() && line.back() == L'\r') line.pop_back();
+        pos = (end == std::wstring::npos) ? text.size() + 1 : end + 1;
+        if (line.empty()) {
+            if (current.size() >= 2) groups.push_back(current);
+            current.clear();
+            continue;
+        }
+        if (line[0] == L'#') continue;
+        current.push_back(line);
+    }
+    if (current.size() >= 2) groups.push_back(current);
+
+    if (groups.empty()) {
+        MessageBox(hwnd, TR(S_MSG_SYNC_EMPTY), TR(S_T_MAP), MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    size_t relinked = 0, copied = 0, already = 0, failed = 0, groupsSeen = 0;
+    for (size_t g = 0; g < groups.size(); ++g) {
+        std::vector<std::wstring> present;
+        for (size_t i = 0; i < groups[g].size(); ++i)
+            if (GetFileAttributesW(groups[g][i].c_str()) != INVALID_FILE_ATTRIBUTES) present.push_back(groups[g][i]);
+        if (present.size() < 2) continue;
+        groupsSeen++;
+
+        std::wstring master = present[0];
+        FILETIME newest = { 0, 0 };
+        for (size_t i = 0; i < present.size(); ++i) {
+            WIN32_FILE_ATTRIBUTE_DATA fad = { 0 };
+            if (!GetFileAttributesExW(present[i].c_str(), GetFileExInfoStandard, &fad)) continue;
+            if (CompareFileTime(&fad.ftLastWriteTime, &newest) > 0) {
+                newest = fad.ftLastWriteTime;
+                master = present[i];
+            }
+        }
+
+        for (size_t i = 0; i < present.size(); ++i) {
+            const std::wstring& target = present[i];
+            if (target == master) continue;
+            if (SameFileIdentity(master.c_str(), target.c_str())) { already++; continue; }
+            if (IsProtectedPath(target.c_str()) || IsProtectedPath(master.c_str())) { failed++; continue; }
+
+            std::wstring backup = target + L".hlbak";
+            if (!MoveFileExW(target.c_str(), backup.c_str(), MOVEFILE_REPLACE_EXISTING)) { failed++; continue; }
+
+            bool linked = SameVolume(master.c_str(), target.c_str()) &&
+                          CreateHardLinkW(target.c_str(), master.c_str(), NULL) != FALSE;
+            bool ok = linked || CopyFileW(master.c_str(), target.c_str(), FALSE) != FALSE;
+            if (!ok) {
+                MoveFileExW(backup.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING);
+                failed++;
+                continue;
+            }
+            DeleteFileW(backup.c_str());
+            if (linked) relinked++; else copied++;
+        }
+    }
+
+    if (groupsSeen == 0) {
+        MessageBox(hwnd, TR(S_MSG_SYNC_NONE), TR(S_T_MAP), MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    wchar_t msg[1200];
+    swprintf(msg, _countof(msg), TR(S_MSG_SYNC_DONE), relinked, copied, already, failed);
+    MessageBox(hwnd, msg, TR(S_T_SYNC), MB_OK | MB_ICONINFORMATION);
+    SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_BTN_REFRESH, BN_CLICKED), 0);
+}
+
 unsigned __stdcall CreateHardlinksThread(void* pArguments) {
-    g_nAclFixed = 0; // v1.3: ±¾ÂÖ×ª»»µÄ½Ó¹Ü¼ÆÊıÇåÁã
+    g_nAclFixed = 0; // v1.3: æœ¬è½®è½¬æ¢çš„æ¥ç®¡è®¡æ•°æ¸…é›¶
     int count = (int)SendMessage(g_hHardlinkList, LVM_GETITEMCOUNT, 0, 0);
     int checkedCount = 0;
 
@@ -1524,8 +1725,9 @@ unsigned __stdcall CreateHardlinksThread(void* pArguments) {
     }
 
     std::map<std::wstring, std::vector<std::wstring>> dupGroups;
+    std::vector<std::vector<std::wstring>> linkedGroups; // v1.7ï¼šå®é™…å»ºç«‹æˆåŠŸçš„ç¡¬é“¾æ¥ç»„
     for (int i = 0; i < count; i++) {
-        // Èç¹ûÓÃ»§¹´Ñ¡ÁËÎÄ¼ş£¬Ö»´¦Àí±»¹´Ñ¡µÄÎÄ¼ş£»Èç¹ûÃ»ÓĞ¹´Ñ¡£¬´¦ÀíÈ«²¿
+        // å¦‚æœç”¨æˆ·å‹¾é€‰äº†æ–‡ä»¶ï¼Œåªå¤„ç†è¢«å‹¾é€‰çš„æ–‡ä»¶ï¼›å¦‚æœæ²¡æœ‰å‹¾é€‰ï¼Œå¤„ç†å…¨éƒ¨
         if (checkedCount > 0 && !ListView_GetCheckState(g_hHardlinkList, i)) continue;
 
         wchar_t path[2048] = { 0 }; wchar_t sha[128] = { 0 };
@@ -1542,6 +1744,8 @@ unsigned __stdcall CreateHardlinksThread(void* pArguments) {
 
         if (paths.size() > 1) {
             std::wstring master = paths[0];
+            std::vector<std::wstring> linkedMembers; // v1.7
+            linkedMembers.push_back(master);
 
             for (size_t i = 1; i < paths.size(); ++i) {
                 if (g_bCancelAnalysis) break;
@@ -1558,7 +1762,7 @@ unsigned __stdcall CreateHardlinksThread(void* pArguments) {
 
                 std::wstring targetBak = target + L".hlbak";
                 BOOL moved = MoveFile(target.c_str(), targetBak.c_str());
-                AclRestore stF, stD; // v1.3: ACL ¶µµ×¡ª¡ªÎÄ¼ş±¾Éí²»ĞĞÔÙ½Ó¹Ü¸¸Ä¿Â¼
+                AclRestore stF, stD; // v1.3: ACL å…œåº•â€”â€”æ–‡ä»¶æœ¬èº«ä¸è¡Œå†æ¥ç®¡çˆ¶ç›®å½•
                 BOOL grantedFile = FALSE, grantedDir = FALSE;
                 if (!moved) {
                     wchar_t dir[2048]; lstrcpyn(dir, target.c_str(), (int)_countof(dir));
@@ -1581,30 +1785,44 @@ unsigned __stdcall CreateHardlinksThread(void* pArguments) {
                 }
 
                 BOOL linked = FALSE;
-                if (g_bSlinkMode) linked = CreateSymbolicLinkSmart(target.c_str(), master.c_str()); // v1.3: ÈíÁ¬½ÓÄ£Ê½
+                if (g_bSlinkMode) linked = CreateSymbolicLinkSmart(target.c_str(), master.c_str()); // v1.3: è½¯è¿æ¥æ¨¡å¼
                 else linked = CreateHardLink(target.c_str(), master.c_str(), NULL);
 
                 if (linked) {
                     DeleteFile(targetBak.c_str());
                     successCount++;
-                    // Ô­ÎÄ¼ş¶ÔÏóÒÑ±»É¾³ı£¬½Ó¹Ü×´Ì¬²»»¹Ô­£¨»¹Ô­»á´íÂäÔÚĞÂ½¨µÄÁ´½ÓÉÏ£©
+                    if (!g_bSlinkMode) linkedMembers.push_back(target); // v1.7ï¼šåªè®°å½•çœŸæ­£åŒå†…å®¹çš„è·¯å¾„
+                    // åŸæ–‡ä»¶æ•°æ®å·²è¢«åˆ é™¤ï¼Œæ¥æ‰‹è¿‡çŠ¶æ€çš„å‰¯æœ¬ä»åŸæ ·ä¿ç•™ï¼ˆä¸‹æ¬¡åˆ›å»ºæ—¶é‡æ–°è¯„ä¼°ï¼‰
                 }
                 else {
                     MoveFile(targetBak.c_str(), target.c_str());
                     failCount++;
-                    AclRestoreAccess(&stF); // ÒÑÒÆ»Ø£¬Ô­¶ÔÏó»¹ÔÚ£¬»¹Ô­
+                    AclRestoreAccess(&stF); // å·²ç§»å›ï¼ŒåŸå¯¹è±¡è¿˜åœ¨ï¼Œè¿˜åŸ
                     AclRestoreAccess(&stD);
                 }
             }
+            if (linkedMembers.size() > 1) linkedGroups.push_back(linkedMembers); // v1.7
         }
     }
+
+    // v1.7ï¼šç¡¬é“¾æ¥å»ºç«‹æˆåŠŸåè‡ªåŠ¨å¯¼å‡ºæ˜ å°„è¡¨ï¼Œåç»­æ›´æ–°å¯ç›´æ¥æŒ‰è¡¨åŒæ­¥
+    if (!g_bSlinkMode && !linkedGroups.empty()) {
+        wchar_t name[128];
+        SYSTEMTIME st; GetLocalTime(&st);
+        swprintf(name, _countof(name), L"ElegantHLK-map-%04d%02d%02d-%02d%02d%02d.hlkm",
+                 st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+        wchar_t mapPath[2048] = { 0 };
+        PathCombineW(mapPath, g_CurrentPath, name);
+        if (WriteHardlinkMap(linkedGroups, mapPath)) lstrcpyn(g_szLastMapPath, mapPath, _countof(g_szLastMapPath));
+    }
+
     PostMessage(g_hMainWnd, WM_USER_CREATE_DONE, (WPARAM)successCount, (LPARAM)failCount);
     return 0;
 }
 
-// ===================== v1.3£ºACL È¨ÏŞ¶µµ×£¨²»Í¬ËùÓĞÕß/È¨ÏŞµÄÎÄ¼şÒ²ÄÜ´¦Àí£©=====================
-// Ë¼Â·£º¿ªÆô SeTakeOwnership/SeRestore/SeBackup ÌØÈ¨ ¡ú ÁÙÊ±°ÑÎÄ¼şËùÓĞÕß½Ó¹ÜÎª Administrators
-// ²¢²¹Ò»ÌõÍêÈ«¿ØÖÆ ACE ¡ú ²Ù×÷Íê³Éºó°´Ğè»¹Ô­Ô­ËùÓĞÕßÓëÔ­ DACL¡£¼´Ê±ÉúĞ§¡¢ÓÃÍê¼´»¹¡£
+// ===================== v1.3ï¼šACL æƒé™å…œåº•ï¼ˆä¸åŒæ‰€æœ‰è€…/æƒé™çš„æ–‡ä»¶ä¹Ÿèƒ½å¤„ç†ï¼‰=====================
+// æ€è·¯ï¼šå¼€å¯ SeTakeOwnership/SeRestore/SeBackup ç‰¹æƒ â†’ ä¸´æ—¶æŠŠæ–‡ä»¶æ‰€æœ‰è€…æ¥ç®¡ä¸º Administrators
+// å¹¶è¡¥ä¸€æ¡å®Œå…¨æ§åˆ¶ ACE â†’ æ“ä½œå®ŒæˆåæŒ‰éœ€è¿˜åŸåŸæ‰€æœ‰è€…ä¸åŸ DACLã€‚å³æ—¶ç”Ÿæ•ˆã€ç”¨å®Œå³è¿˜ã€‚
 
 static void EnableAclPrivileges() {
     static BOOL s_done = FALSE;
@@ -1626,7 +1844,7 @@ static void EnableAclPrivileges() {
     }
 }
 
-// ½Ó¹ÜËùÓĞÈ¨²¢×·¼Ó Administrators ÍêÈ«¿ØÖÆ ACE£»Ô­°²È«ÃèÊö·û±¸·İ½ø st ¹©»¹Ô­
+// æ¥ç®¡æ‰€æœ‰æƒå¹¶è¿½åŠ  Administrators å®Œå…¨æ§åˆ¶ ACEï¼›åŸå®‰å…¨æè¿°ç¬¦å¤‡ä»½è¿› st ä¾›è¿˜åŸ
 static BOOL AclGrantAccess(const wchar_t* path, BOOL isDir, AclRestore* st) {
     memset(st, 0, sizeof(AclRestore));
     lstrcpyn(st->path, path, (int)sizeof(st->path));
@@ -1672,7 +1890,7 @@ static BOOL AclGrantAccess(const wchar_t* path, BOOL isDir, AclRestore* st) {
     return ok;
 }
 
-// »¹Ô­Ô­ËùÓĞÕß/DACL¡£Â·¾¶ÉÏµÄ¶ÔÏó¿ÉÄÜÒÑ±»Ìæ»»»òÉ¾³ı£¨×ª»»Á÷³Ì£©£¬Ö»ÔÚ»¹´æÔÚÊ±»¹Ô­
+// è¿˜åŸåŸæ‰€æœ‰è€…/DACLã€‚è·¯å¾„ä¸Šçš„å¯¹è±¡å¯èƒ½å·²è¢«æ›¿æ¢æˆ–åˆ é™¤ï¼ˆè½¬æ¢æµç¨‹ï¼‰ï¼Œåªåœ¨è¿˜å­˜åœ¨æ—¶è¿˜åŸ
 static void AclRestoreAccess(AclRestore* st) {
     if (!st->active) {
         if (st->sd) { LocalFree(st->sd); st->sd = NULL; }
@@ -1687,7 +1905,7 @@ static void AclRestoreAccess(AclRestore* st) {
     if (st->sd) { LocalFree(st->sd); st->sd = NULL; }
 }
 
-// ÆÕÍ¨·½Ê½´ò¿ªÊ§°ÜÊ±×ß½Ó¹Ü¶µµ×£»³É¹¦ºóµ÷ÓÃ·½±ØĞëÔÚ CloseHandle ºó AclRestoreAccess
+// æ™®é€šæ–¹å¼æ‰“å¼€å¤±è´¥æ—¶èµ°æ¥ç®¡å…œåº•ï¼›æˆåŠŸåè°ƒç”¨æ–¹å¿…é¡»åœ¨ CloseHandle å AclRestoreAccess
 static HANDLE OpenFileExAcl(const wchar_t* path, DWORD access, DWORD share, DWORD flags, AclRestore* st) {
     memset(st, 0, sizeof(AclRestore));
     HANDLE h = CreateFile(path, access, share, NULL, OPEN_EXISTING, flags, NULL);
@@ -1734,7 +1952,7 @@ BOOL IsProtectedPath(const wchar_t* path) {
 
 BOOL BreakHardlink(const wchar_t* filepath) {
     wchar_t tempPath[2048]; swprintf(tempPath, _countof(tempPath), L"%s.tmp_hl_bak", filepath);
-    AclRestore st; // v1.3: ACL ¶µµ×
+    AclRestore st; // v1.3: ACL å…œåº•
     memset(&st, 0, sizeof(st));
     BOOL granted = FALSE;
     if (!CopyFile(filepath, tempPath, FALSE)) {
@@ -1744,12 +1962,12 @@ BOOL BreakHardlink(const wchar_t* filepath) {
             return FALSE;
         }
     }
-    if (!DeleteFile(filepath)) { // Ô­¶ÔÏó»¹ÔÚ£¬¿É»¹Ô­
+    if (!DeleteFile(filepath)) { // åŸå¯¹è±¡è¿˜åœ¨ï¼Œå¯è¿˜åŸ
         DeleteFile(tempPath);
         AclRestoreAccess(&st);
         return FALSE;
     }
-    return MoveFile(tempPath, filepath); // Ô­¶ÔÏóÒÑÉ¾£¬½Ó¹Ü×´Ì¬Ëæ¶ÔÏóÏûÊ§£¬²»»¹Ô­
+    return MoveFile(tempPath, filepath); // åŸå¯¹è±¡å·²åˆ ï¼Œæ¥ç®¡çŠ¶æ€éšå¯¹è±¡æ¶ˆå¤±ï¼Œä¸è¿˜åŸ
 }
 
 void CopyToClipboard(HWND hwnd, const wchar_t* text) {
@@ -1760,7 +1978,7 @@ void CopyToClipboard(HWND hwnd, const wchar_t* text) {
     }
 }
 
-// v1.4: µ¼³öÎÄ¼şÍ³Ò»Ğ´ UTF-8£¨´ø BOM£¬Excel/¼ÇÊÂ±¾²»ÂÒÂë£©£¬ÄÚ²¿×Ö·û´®Îª¿í×Ö·û
+// v1.4: å¯¼å‡ºæ–‡ä»¶ç»Ÿä¸€å†™ UTF-8ï¼ˆå¸¦ BOMï¼ŒExcel/è®°äº‹æœ¬ä¸ä¹±ç ï¼‰ï¼Œå†…éƒ¨å­—ç¬¦ä¸²ä¸ºå®½å­—ç¬¦
 static void FputUtf8(FILE* fp, const wchar_t* s) {
     int cb = WideCharToMultiByte(CP_UTF8, 0, s, -1, NULL, 0, NULL, NULL);
     if (cb > 1) {
@@ -1812,7 +2030,7 @@ void ExportHardlinkList(HWND hwnd) {
     const unsigned char kUtf8Bom[3] = { 0xEF, 0xBB, 0xBF }; // v1.4: BOM
     fwrite(kUtf8Bom, 1, 3, fp);
 
-    // v1.2£ºÑ¡ .txt Ê±µ¼³ö¿É¶Á·Ö×éÇåµ¥£¨Ã¿×éÊ×¸ö±£Áô¡¢ÆäÓà¿ÉÉ¾£©£¬·ñÔò±£³Ö CSV
+    // v1.2ï¼šé€‰ .txt æ—¶å¯¼å‡ºå¯è¯»åˆ†ç»„æ¸…å•ï¼ˆæ¯ç»„é¦–ä¸ªä¿ç•™ã€å…¶ä½™å¯åˆ ï¼‰ï¼Œå¦åˆ™ä¿æŒ CSV
     const wchar_t* dotExt = PathFindExtension(fileName);
     if (dotExt && lstrcmpi(dotExt, L".txt") == 0) {
         std::map<std::wstring, std::vector<std::wstring> > txtGroups;
@@ -1895,7 +2113,7 @@ void AddListItem(HWND hList, const wchar_t* col0, const wchar_t* col1, const wch
     if (col4) { LVITEM lviSub = { 0 }; lviSub.mask = LVIF_TEXT; lviSub.iItem = idx; lviSub.iSubItem = 4; lviSub.pszText = (LPWSTR)col4; SendMessage(hList, LVM_SETITEMTEXT, idx, (LPARAM)&lviSub); }
 }
 
-HFONT GetAppFont() { // v1.2£º×ÖÌåµ¥Àı£»v1.5£º×ÖºÅ¿ÉÔÚÉèÖÃÖĞµ÷Õû£¬±ä»¯Ê±ÖØ½¨
+HFONT GetAppFont() { // v1.2ï¼šå­—ä½“å•ä¾‹ï¼›v1.5ï¼šå­—å·å¯åœ¨è®¾ç½®ä¸­è°ƒæ•´ï¼Œå˜åŒ–æ—¶é‡å»º
     static HFONT s_hFont = NULL;
     static int s_pt = 0;
     if (!s_hFont || s_pt != g_FontPt) {
@@ -1910,7 +2128,7 @@ void SetDefaultFont(HWND hwnd) {
     SendMessage(hwnd, WM_SETFONT, (WPARAM)GetAppFont(), MAKELPARAM(TRUE, 0));
 }
 
-// v1.5: ´ò¿ª¸ÃÖØ¸´×é£¨ÏàÍ¬ SHA256£©È«²¿ÎÄ¼şËùÔÚÎ»ÖÃ
+// v1.5: æ‰“å¼€è¯¥é‡å¤ç»„ï¼ˆç›¸åŒ SHA256ï¼‰å…¨éƒ¨æ–‡ä»¶æ‰€åœ¨ä½ç½®
 void OpenGroupLocations(HWND hwnd, int iItem) {
     (void)hwnd;
     wchar_t sha[128] = { 0 };
@@ -1928,15 +2146,15 @@ void OpenGroupLocations(HWND hwnd, int iItem) {
     }
 }
 
-// v1.5: ×ÖºÅ±ä¸üºóË¢ĞÂÈ«²¿¿Ø¼ş×ÖÌå²¢ÖØ»æ
+// v1.5: å­—å·å˜æ›´ååˆ·æ–°å…¨éƒ¨æ§ä»¶å­—ä½“å¹¶é‡ç»˜
 void ApplyFontToUI() {
-    GetAppFont(); // ´¥·¢°´ĞÂ×ÖºÅÖØ½¨
+    GetAppFont(); // è§¦å‘æŒ‰æ–°å­—å·é‡å»º
     HWND ctrls[] = {
         g_hGroupFilter, g_hTxtDisk, g_hTxtAddr, g_hTxtFilter, g_hTxtInc, g_hEditInc, g_hTxtExc, g_hEditExc,
         g_hTxtSize, g_hEditSizeMin, g_hTxtSizeTo, g_hEditSizeMax, g_hTxtTotalSaved, g_hComboDisk, g_hEditAddress,
         g_hComboFilter, g_hFileList, g_hHardlinkList, g_hBtnSelAllL, g_hBtnInvSelL, g_hBtnSelAllR, g_hBtnInvSelR,
         g_hBtnExportR, g_hTxtScanInfo, g_hBtnRefresh, g_hBtnAnalyze, g_hBtnCreate, g_hBtnRestore, g_hBtnAbout,
-        g_hBtnDelDup, g_hBtnSettings, g_hChkSlink
+        g_hBtnDelDup, g_hBtnSettings, g_hChkSlink, g_hBtnSyncMap
     };
     for (int i = 0; i < (int)(sizeof(ctrls) / sizeof(ctrls[0])); i++)
         if (ctrls[i]) SendMessage(ctrls[i], WM_SETFONT, (WPARAM)GetAppFont(), MAKELPARAM(TRUE, 0));
@@ -1959,7 +2177,7 @@ void ShowFileContextMenu(HWND hwnd, POINT pt, BOOL isHardlinkList) {
     DestroyMenu(hMenu);
 }
 
-// ===================== v1.2£ºÉèÖÃ³Ö¾Ã»¯£¨HKCU\Software\ElegantHLK£©=====================
+// ===================== v1.2ï¼šè®¾ç½®æŒä¹…åŒ–ï¼ˆHKCU\Software\ElegantHLKï¼‰=====================
 DWORD RegGetDword(const wchar_t* name, DWORD defVal) {
     HKEY hKey; DWORD val = defVal;
     if (RegOpenKeyEx(HKEY_CURRENT_USER, L"Software\\ElegantHLK", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
@@ -1983,7 +2201,7 @@ void LoadSettings() {
     g_ThemeMode = (int)RegGetDword(L"Theme", 0);
     if (g_LangMode < 0 || g_LangMode > 2) g_LangMode = 0;
     if (g_ThemeMode < 0 || g_ThemeMode > 2) g_ThemeMode = 0;
-    // v1.5: ×ÖºÅÈ¡ºÏ·¨µµÎ»×î½üÖµ£¬·ÖÀ¸±ÈÀıÏŞ 200~800
+    // v1.5: å­—å·å–åˆæ³•æ¡£ä½æœ€è¿‘å€¼ï¼Œåˆ†æ æ¯”ä¾‹é™ 200~800
     g_FontPt = (int)RegGetDword(L"FontSize", 11);
     const int ptAllowed[4] = { 10, 11, 12, 14 };
     int bestIdx = 0, bestDist = 1 << 30;
@@ -1994,7 +2212,7 @@ void LoadSettings() {
     if (g_SplitPermille > 800) g_SplitPermille = 800;
 }
 
-// ½âÎöµ±Ç°ÉúĞ§ÓïÑÔ£ºÊÖ¶¯ÓÅÏÈ£»×Ô¶¯Ä£Ê½ÏÂ·ÇÖĞÎÄÏµÍ³Ò»ÂÉÓ¢ÎÄ
+// è§£æå½“å‰ç”Ÿæ•ˆè¯­è¨€ï¼šæ‰‹åŠ¨ä¼˜å…ˆï¼›è‡ªåŠ¨æ¨¡å¼ä¸‹éä¸­æ–‡ç³»ç»Ÿä¸€å¾‹è‹±æ–‡
 void ApplyLanguage() {
     if (g_LangMode == 1) { g_Lang = 0; return; }
     if (g_LangMode == 2) { g_Lang = 1; return; }
@@ -2005,7 +2223,7 @@ void ApplyLanguage() {
     g_Lang = (PRIMARYLANGID(lid) == LANG_CHINESE) ? 0 : 1;
 }
 
-// ÓïÑÔÇĞ»»ºóË¢ĞÂÈ«²¿ UI ÎÄ±¾£¨°´Å¥/±êÇ©/ÁĞÍ·/ÏÂÀ­Ïî/±êÌâ£©
+// è¯­è¨€åˆ‡æ¢ååˆ·æ–°å…¨éƒ¨ UI æ–‡æœ¬ï¼ˆæŒ‰é’®/æ ‡ç­¾/åˆ—å¤´/ä¸‹æ‹‰é¡¹/æ ‡é¢˜ï¼‰
 void ApplyLanguageToUI() {
     if (!g_hMainWnd) return;
     SetWindowText(g_hMainWnd, TR(S_TITLE));
@@ -2023,8 +2241,9 @@ void ApplyLanguageToUI() {
     SetWindowText(g_hBtnExportR, TR(S_BTN_EXPORT));
     SetWindowText(g_hBtnDelDup, TR(S_BTN_DELDUP));
     SetWindowText(g_hBtnSettings, TR(S_BTN_SETTINGS));
+    SetWindowText(g_hBtnSyncMap, TR(S_BTN_SYNC_MAP));
     SetWindowText(g_hBtnAbout, TR(S_BTN_ABOUT));
-    if (!g_bScanning) { // ÈÎÎñ½øĞĞÖĞ±£³Ö¡¸Í£Ö¹¡¹ÓïÒå£¬±ÜÃâ×´Ì¬´íÂÒ
+    if (!g_bScanning) { // ä»»åŠ¡è¿›è¡Œä¸­ä¿æŒã€Œåœæ­¢ã€è¯­ä¹‰ï¼Œé¿å…çŠ¶æ€é”™ä¹±
         SetWindowText(g_hBtnRefresh, TR(S_BTN_REFRESH));
         SetWindowText(g_hBtnAnalyze, TR(S_BTN_ANALYZE));
         SetWindowText(g_hBtnCreate, g_bSlinkMode ? TR(S_BTN_CREATE_SL) : TR(S_BTN_CREATE)); // v1.3
@@ -2056,7 +2275,7 @@ void ApplyLanguageToUI() {
     RedrawWindow(g_hMainWnd, NULL, NULL, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE | RDW_FRAME);
 }
 
-// ¶ÁÏµÍ³°µÉ«ÉèÖÃ£¨HKCU\...\Personalize\AppsUseLightTheme£¬XP ÎŞ´Ë¼ü => Ç³É«£©
+// è¯»ç³»ç»Ÿæš—è‰²è®¾ç½®ï¼ˆHKCU\...\Personalize\AppsUseLightThemeï¼ŒXP æ— æ­¤é”® => æµ…è‰²ï¼‰
 BOOL SystemDarkModeEnabled() {
     DWORD val = 1; HKEY hKey;
     if (RegOpenKeyEx(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
@@ -2067,7 +2286,7 @@ BOOL SystemDarkModeEnabled() {
     return val == 0;
 }
 
-// uxtheme ×Ô XP Æğ×Ô´ø£»ÀÏÏµÍ³²»ÈÏÊ¶ DarkMode_* Ö÷ÌâÃû»á×Ô¶¯ºöÂÔ£¬°²È«
+// uxtheme è‡ª XP èµ·è‡ªå¸¦ï¼›è€ç³»ç»Ÿä¸è®¤è¯† DarkMode_* ä¸»é¢˜åä¼šè‡ªåŠ¨å¿½ç•¥ï¼Œå®‰å…¨
 static void SetCtrlTheme(HWND h, const wchar_t* darkName) {
     if (!h) return;
     if (g_bDark) SetWindowTheme(h, darkName, NULL);
@@ -2081,11 +2300,11 @@ void ApplyTheme() {
     if (g_hbrEdit) { DeleteObject(g_hbrEdit); g_hbrEdit = NULL; }
     g_hbrBg = CreateSolidBrush(dark ? RGB(32, 32, 32) : RGB(255, 255, 255));
     g_hbrEdit = CreateSolidBrush(dark ? RGB(45, 45, 45) : RGB(255, 255, 255));
-    if (!g_hMainWnd) return; // WinMain ÔçÆÚµ÷ÓÃÖ»Îª½¨±ÊË¢
+    if (!g_hMainWnd) return; // WinMain æ—©æœŸè°ƒç”¨åªä¸ºå»ºç¬”åˆ·
 
     SetClassLongPtr(g_hMainWnd, GCLP_HBRBACKGROUND, (LONG_PTR)g_hbrBg);
 
-    // Win10 1903+ °µÉ«±êÌâÀ¸£¨dwmapi ÔËĞĞÊ±Ì½²â£¬XP/ÀÏÏµÍ³×Ô¶¯Ìø¹ı£©
+    // Win10 1903+ æš—è‰²æ ‡é¢˜æ ï¼ˆdwmapi è¿è¡Œæ—¶æ¢æµ‹ï¼ŒXP/è€ç³»ç»Ÿè‡ªåŠ¨è·³è¿‡ï¼‰
     HMODULE hDwm = LoadLibraryW(L"dwmapi.dll");
     if (hDwm) {
         typedef HRESULT(WINAPI* DSWA)(HWND, DWORD, LPCVOID, DWORD);
@@ -2094,7 +2313,7 @@ void ApplyTheme() {
         FreeLibrary(hDwm);
     }
 
-    // ÁĞ±í/±íÍ·/ÏÂÀ­¿ò½»¸øÏµÍ³°µÉ«Ö÷Ìâ£¨Win10 1809+ ÉúĞ§£©
+    // åˆ—è¡¨/è¡¨å¤´/ä¸‹æ‹‰æ¡†äº¤ç»™ç³»ç»Ÿæš—è‰²ä¸»é¢˜ï¼ˆWin10 1809+ ç”Ÿæ•ˆï¼‰
     SetCtrlTheme(g_hFileList, L"DarkMode_Explorer");
     SetCtrlTheme(g_hHardlinkList, L"DarkMode_Explorer");
     SetCtrlTheme(ListView_GetHeader(g_hFileList), L"DarkMode_ItemsView");
@@ -2103,7 +2322,7 @@ void ApplyTheme() {
     SetCtrlTheme(g_hComboFilter, L"DarkMode_CFD");
 
     if (dark) {
-        SetWindowTheme(g_hProgressBar, L"", L""); // ¹ØÖ÷ÌâºóÑÕÉ«ÏûÏ¢²ÅÉúĞ§
+        SetWindowTheme(g_hProgressBar, L"", L""); // å…³ä¸»é¢˜åé¢œè‰²æ¶ˆæ¯æ‰ç”Ÿæ•ˆ
         SendMessage(g_hProgressBar, PBM_SETBKCOLOR, 0, RGB(45, 45, 45));
         SendMessage(g_hProgressBar, PBM_SETBARCOLOR, 0, RGB(6, 176, 37));
     } else {
@@ -2122,7 +2341,7 @@ void ApplyTheme() {
     RedrawWindow(g_hMainWnd, NULL, NULL, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE | RDW_FRAME | RDW_UPDATENOW);
 }
 
-// v1.2 ×Ô»æ°´Å¥£¨Ç³É«·ÂÔ­Éú¡¢ÉîÉ«°µµ×£©£¬·Ö×é¿òÍ¬×ß´ËÂ·
+// v1.2 è‡ªç»˜æŒ‰é’®ï¼ˆæµ…è‰²ä»¿åŸç”Ÿã€æ·±è‰²æš—åº•ï¼‰ï¼Œåˆ†ç»„æ¡†åŒèµ°æ­¤è·¯
 void DrawThemedButton(LPDRAWITEMSTRUCT dis) {
     HWND hBtn = dis->hwndItem;
     HDC hdc = dis->hDC;
@@ -2176,7 +2395,7 @@ void DrawThemedButton(LPDRAWITEMSTRUCT dis) {
     SelectObject(hdc, oldF);
 }
 
-// v1.2 ÉîÉ«Ä£Ê½×Ô»æ²Ëµ¥Ïî£¨itemData=×Ö·û´®Ö¸Õë£»NULL=·Ö¸ôÏß£»Ñ¡ÖĞÌ¬»­Ô²µã£©
+// v1.2 æ·±è‰²æ¨¡å¼è‡ªç»˜èœå•é¡¹ï¼ˆitemData=å­—ç¬¦ä¸²æŒ‡é’ˆï¼›NULL=åˆ†éš”çº¿ï¼›é€‰ä¸­æ€ç”»åœ†ç‚¹ï¼‰
 void DrawThemedMenuItem(LPDRAWITEMSTRUCT dis) {
     HDC hdc = dis->hDC;
     RECT rc = dis->rcItem;
@@ -2211,7 +2430,7 @@ void DrawThemedMenuItem(LPDRAWITEMSTRUCT dis) {
     SelectObject(hdc, oldF);
 }
 
-// ÉîÉ«Ä£Ê½ÏÂ²Ëµ¥Ïî¸Ä×Ô»æ£¨ÎÄ×ÖÖ¸Õë¼´ itemData£©£¬Ç³É«±£³ÖÏµÍ³»æÖÆ
+// æ·±è‰²æ¨¡å¼ä¸‹èœå•é¡¹æ”¹è‡ªç»˜ï¼ˆæ–‡å­—æŒ‡é’ˆå³ itemDataï¼‰ï¼Œæµ…è‰²ä¿æŒç³»ç»Ÿç»˜åˆ¶
 void AppendThemedItem(HMENU hMenu, UINT id, const wchar_t* text) {
     if (g_bDark) {
         if (text) AppendMenu(hMenu, MF_OWNERDRAW, id, (LPCWSTR)text);
@@ -2223,13 +2442,13 @@ void AppendThemedItem(HMENU hMenu, UINT id, const wchar_t* text) {
     }
 }
 
-// v1.5: ¼¶Áª×Ó²Ëµ¥¹ÒÔØ£¨ÉîÉ«ÏÂÍ¬Ñù×ß×Ô»æ£¬¸¸ÏîÎÄ×ÖÖ¸Õë×÷ itemData£©
+// v1.5: çº§è”å­èœå•æŒ‚è½½ï¼ˆæ·±è‰²ä¸‹åŒæ ·èµ°è‡ªç»˜ï¼Œçˆ¶é¡¹æ–‡å­—æŒ‡é’ˆä½œ itemDataï¼‰
 void AppendThemedSub(HMENU hParent, HMENU hSub, const wchar_t* text) {
     if (g_bDark) AppendMenuW(hParent, MF_OWNERDRAW | MF_POPUP, (UINT_PTR)hSub, text);
     else AppendMenuW(hParent, MF_POPUP, (UINT_PTR)hSub, text);
 }
 
-// v1.2£º²»½¨Ó²Á´½Ó£¬Ö±½Ó°ÑÃ¿×é¶àÓà¸±±¾ËÍÈë»ØÊÕÕ¾£¨±£ÁôÃ¿×éµÚ 1 ¸ö£©
+// v1.2ï¼šä¸å»ºç¡¬é“¾æ¥ï¼Œç›´æ¥æŠŠæ¯ç»„å¤šä½™å‰¯æœ¬é€å…¥å›æ”¶ç«™ï¼ˆä¿ç•™æ¯ç»„ç¬¬ 1 ä¸ªï¼‰
 void DoDeleteDuplicates(HWND hwnd) {
     int count = (int)SendMessage(g_hHardlinkList, LVM_GETITEMCOUNT, 0, 0);
     if (count == 0) {
@@ -2240,15 +2459,15 @@ void DoDeleteDuplicates(HWND hwnd) {
     for (int i = 0; i < count; i++) if (ListView_GetCheckState(g_hHardlinkList, i)) checkedCount++;
 
     std::map<std::wstring, int> seenSha;
-    std::wstring buf; // SHFileOperation ÓÃµÄ¶àÂ·¾¶´®£¨Öğ¸ö \0 ·Ö¸ô£©
+    std::wstring buf; // SHFileOperation ç”¨çš„å¤šè·¯å¾„ä¸²ï¼ˆé€ä¸ª \0 åˆ†éš”ï¼‰
     size_t delN = 0, skipN = 0;
     for (int i = 0; i < count; i++) {
         if (checkedCount > 0 && !ListView_GetCheckState(g_hHardlinkList, i)) continue;
         wchar_t path[2048] = { 0 }, sha[128] = { 0 };
         GetListViewSubItemText(g_hHardlinkList, i, 0, path, 2048);
         GetListViewSubItemText(g_hHardlinkList, i, 3, sha, 128);
-        if (wcslen(path) == 0 || wcslen(sha) == 0) continue; // Ö»´¦Àí·ÖÎö²úÉúµÄĞĞ
-        if (seenSha.find(sha) == seenSha.end()) { seenSha[sha] = 1; continue; } // Ã¿×éµÚ 1 ¸ö±£Áô
+        if (wcslen(path) == 0 || wcslen(sha) == 0) continue; // åªå¤„ç†åˆ†æäº§ç”Ÿçš„è¡Œ
+        if (seenSha.find(sha) == seenSha.end()) { seenSha[sha] = 1; continue; } // æ¯ç»„ç¬¬ 1 ä¸ªä¿ç•™
         if (IsProtectedPath(path)) { skipN++; continue; }
         buf.append(path, wcslen(path) + 1);
         delN++;
@@ -2315,7 +2534,7 @@ void CreateControls(HWND hwnd) {
     g_hTxtSizeTo = CreateWindowEx(0, L"STATIC", L"-", WS_VISIBLE | WS_CHILD, DPIScale(740), DPIScale(65), DPIScale(20), DPIScale(20), hwnd, NULL, g_hInst, NULL);
     g_hEditSizeMax = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, DPIScale(760), DPIScale(62), DPIScale(60), DPIScale(24), hwnd, (HMENU)(INT_PTR)ID_EDIT_MAX_SIZE, g_hInst, NULL);
 
-    // ĞÂÔöÈ«Ñ¡ / ·´Ñ¡°´Å¥
+    // æ–°å¢å…¨é€‰ / åé€‰æŒ‰é’®
     g_hBtnSelAllL = CreateWindowEx(0, L"BUTTON", TR(S_BTN_SELALL), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(10), DPIScale(110), DPIScale(60), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_SELALL_L, g_hInst, NULL);
     g_hBtnInvSelL = CreateWindowEx(0, L"BUTTON", TR(S_BTN_INVSEL), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(80), DPIScale(110), DPIScale(60), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_INVSEL_L, g_hInst, NULL);
     g_hBtnSelAllR = CreateWindowEx(0, L"BUTTON", TR(S_BTN_SELALL), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(440), DPIScale(110), DPIScale(60), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_SELALL_R, g_hInst, NULL);
@@ -2342,10 +2561,10 @@ void CreateControls(HWND hwnd) {
     SendMessage(g_hFileList, LVM_SETIMAGELIST, LVSIL_SMALL, (LPARAM)hSysImageList);
     SendMessage(g_hHardlinkList, LVM_SETIMAGELIST, LVSIL_SMALL, (LPARAM)hSysImageList);
 
-    // v1.2£ºÉ¾³ıÖØ¸´Ïî£¨²»½¨Ó²Á´½ÓÖ±½ÓÉ¾£©+ ÓïÑÔ / Ö÷ÌâÇĞ»»°´Å¥
+    // v1.2ï¼šåˆ é™¤é‡å¤é¡¹ï¼ˆä¸å»ºç¡¬é“¾æ¥ç›´æ¥åˆ ï¼‰+ è¯­è¨€ / ä¸»é¢˜åˆ‡æ¢æŒ‰é’®
     g_hBtnSettings = CreateWindowExW(0, L"BUTTON", TR(S_BTN_SETTINGS), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(230), DPIScale(110), DPIScale(76), DPIScale(25), hwnd, (HMENU)(INT_PTR)ID_BTN_SETTINGS, g_hInst, NULL);
 
-    // v1.3: ÈíÁ¬½ÓÄ£Ê½¿ª¹Ø£¨¹´Ñ¡ºó¡¸Ò»¼ü´´½¨¡¹¸ÄÎª½¨ÈíÁ¬½Ó£©
+    // v1.3: è½¯è¿æ¥æ¨¡å¼å¼€å…³ï¼ˆå‹¾é€‰åã€Œä¸€é”®åˆ›å»ºã€æ”¹ä¸ºå»ºè½¯è¿æ¥ï¼‰
     g_hChkSlink = CreateWindowEx(0, L"BUTTON", TR(S_CHK_SLINK), WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, DPIScale(720), DPIScale(583), DPIScale(130), DPIScale(30), hwnd, (HMENU)(INT_PTR)ID_CHK_SLINK, g_hInst, NULL);
 
     int btnY = 580;
@@ -2353,6 +2572,7 @@ void CreateControls(HWND hwnd) {
     g_hBtnAnalyze = CreateWindowEx(0, L"BUTTON", TR(S_BTN_ANALYZE), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(140), DPIScale(btnY), DPIScale(130), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_ANALYZE, g_hInst, NULL);
     g_hBtnCreate = CreateWindowEx(0, L"BUTTON", TR(S_BTN_CREATE), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(280), DPIScale(btnY), DPIScale(140), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_CREATE_HLINK, g_hInst, NULL);
     g_hBtnRestore = CreateWindowEx(0, L"BUTTON", TR(S_BTN_RESTORE), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(430), DPIScale(btnY), DPIScale(130), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_RESTORE_SLINK, g_hInst, NULL);
+    g_hBtnSyncMap = CreateWindowEx(0, L"BUTTON", TR(S_BTN_SYNC_MAP), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, DPIScale(570), DPIScale(btnY), DPIScale(140), DPIScale(35), hwnd, (HMENU)(INT_PTR)ID_BTN_SYNC_MAP, g_hInst, NULL); // v1.7
 
     int btnY2 = 625;
     g_hTxtScanInfo = CreateWindowEx(0, L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_LEFT | SS_PATHELLIPSIS | SS_NOPREFIX, DPIScale(180), DPIScale(btnY2 + 2), DPIScale(300), DPIScale(18), hwnd, NULL, g_hInst, NULL);
@@ -2370,8 +2590,9 @@ void CreateControls(HWND hwnd) {
     SetDefaultFont(g_hBtnSelAllL); SetDefaultFont(g_hBtnInvSelL); SetDefaultFont(g_hBtnSelAllR); SetDefaultFont(g_hBtnInvSelR);
     SetDefaultFont(g_hBtnExportR); SetDefaultFont(g_hTxtScanInfo);
     SetDefaultFont(g_hBtnRefresh); SetDefaultFont(g_hBtnAnalyze); SetDefaultFont(g_hBtnCreate); SetDefaultFont(g_hBtnRestore);
+    SetDefaultFont(g_hBtnSyncMap); // v1.7
     SetDefaultFont(g_hBtnAbout);
     SetDefaultFont(g_hBtnDelDup); SetDefaultFont(g_hBtnSettings);
     SetDefaultFont(g_hChkSlink); // v1.3
-    ApplyTheme(); // v1.2 ³õÊ¼Ö÷Ìâ
+    ApplyTheme(); // v1.2 åˆå§‹ä¸»é¢˜
 }
