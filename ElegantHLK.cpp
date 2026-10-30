@@ -218,7 +218,7 @@ S_BTN_SETTINGS, // 设置
 };
 
 static const wchar_t* const STR_TBL[S__COUNT][2] = {
-    { L"优雅硬链接 V1.6", L"ElegantHLK V1.6" },                                       // S_TITLE
+    { L"优雅硬链接 V1.7", L"ElegantHLK V1.7" },                                       // S_TITLE
     { L"磁盘:", L"Disk:" },                                                           // S_DISK
     { L"地址:", L"Path:" },                                                           // S_ADDR
     { L"类型:", L"Type:" },                                                           // S_TYPE
